@@ -56,6 +56,38 @@ This integration lets you access your **entire Clawdbot agent** - with all its s
 1. Copy the `custom_components/clawd` directory to your Home Assistant `custom_components` directory
 2. Restart Home Assistant
 
+## Getting a Gateway Token
+
+A Gateway token is required when connecting to Clawdbot from a different machine (non-localhost). The token authenticates your Home Assistant instance with the Gateway.
+
+**Generate a new token:**
+
+```bash
+clawdbot doctor --generate-gateway-token
+```
+
+This will output a token like `666c291bc8427a2dfb9e16e8871f2eec59f3e2ffee202a5f`. Copy this value for use in the integration configuration.
+
+**Using an existing token:**
+
+If you've already set a token via environment variable, you can retrieve it:
+
+```bash
+echo $CLAWDBOT_GATEWAY_TOKEN
+```
+
+**Starting the Gateway for remote access:**
+
+By default, the Gateway only listens on localhost. To allow connections from Home Assistant on a different machine:
+
+```bash
+clawdbot gateway --bind lan
+```
+
+This binds the Gateway to your local network interface, allowing connections from other devices on your network.
+
+**Security note**: Always use SSL/TLS for remote connections, or use an SSH tunnel. The token should be kept secret as it provides full access to your Clawdbot agent.
+
 ## Configuration
 
 ### Setting Up the Integration
