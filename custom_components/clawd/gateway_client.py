@@ -228,7 +228,7 @@ class ClawdGatewayClient:
             summary = payload.get("summary")
             agent_run.set_complete(status, summary)
             _LOGGER.info("Agent run %s completed with status: %s", run_id, status)
-        elif phase == "endedAt" or phase == "complete":
+        elif phase == "end" or phase == "complete":
             # New-style completion via phase
             agent_run.set_complete("ok", None)
             _LOGGER.info("Agent run %s completed (phase: %s)", run_id, phase)
