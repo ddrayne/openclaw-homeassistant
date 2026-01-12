@@ -115,6 +115,7 @@ class ClawdGatewayClient:
                 method="agent",
                 params={
                     "message": message,
+                    "sessionKey": "main",  # Use main direct-chat session
                     "idempotencyKey": idempotency_key,
                 },
                 timeout=10.0,  # Initial ack should be quick
