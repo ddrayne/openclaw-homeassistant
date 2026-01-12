@@ -22,8 +22,8 @@ STATE_CONNECTING = "connecting"
 STATE_ERROR = "error"
 
 # Gateway protocol
-PROTOCOL_MIN_VERSION = 1
-PROTOCOL_MAX_VERSION = 1
+PROTOCOL_MIN_VERSION = 3
+PROTOCOL_MAX_VERSION = 3
 
 # Client identification
 CLIENT_ID = "gateway-client"
