@@ -21,36 +21,38 @@ class AgentRun:
     def __init__(self, run_id: str) -> None:
         """Initialize agent run tracker."""
         self.run_id = run_id
-        self.output_parts: list[str] = []
         self.status: str | None = None
         self.summary: str | None = None
         self.complete_event = asyncio.Event()
-        # For deduplication of Gateway duplicate events
-        self._last_text: str | None = None
-        self._last_text_time: float = 0.0
+        # Gateway sends cumulative text, not incremental
+        self._full_text: str = ""
 
     def add_output(self, output: str) -> None:
-        """Add output to buffer, with deduplication for Gateway duplicates."""
+        """Add output to buffer. Gateway sends cumulative text, extract only new chars."""
         if not output:
             return
 
-        current_time = time.time()
-
-        # Deduplicate: if same text arrives within 50ms, it's likely a Gateway duplicate
-        if (
-            output == self._last_text
-            and (current_time - self._last_text_time) < 0.05
-        ):
-            _LOGGER.debug(
-                "Ignoring duplicate text for %s (same as %.3fs ago)",
+        # Gateway sends full text each time, only append what's new
+        if output.startswith(self._full_text):
+            # This is cumulative text, extract new portion
+            new_text = output[len(self._full_text) :]
+            if new_text:
+                self._full_text = output
+                _LOGGER.debug(
+                    "Added %d new chars to %s (total: %d)",
+                    len(new_text),
+                    self.run_id,
+                    len(self._full_text),
+                )
+        else:
+            # Not cumulative (shouldn't happen), just replace
+            _LOGGER.warning(
+                "Non-cumulative text update for %s (was: %d, now: %d)",
                 self.run_id,
-                current_time - self._last_text_time,
+                len(self._full_text),
+                len(output),
             )
-            return
-
-        self._last_text = output
-        self._last_text_time = current_time
-        self.output_parts.append(output)
+            self._full_text = output
 
     def set_complete(self, status: str, summary: str | None = None) -> None:
         """Mark run as complete."""
@@ -62,9 +64,7 @@ class AgentRun:
         """Get assembled response."""
         if self.summary:
             return self.summary
-        if self.output_parts:
-            return "".join(self.output_parts)
-        return ""
+        return self._full_text
 
 
 class ClawdGatewayClient:
@@ -239,7 +239,6 @@ class ClawdGatewayClient:
 
         if output:
             agent_run.add_output(output)
-            _LOGGER.debug("Buffered output for %s: %d chars", run_id, len(output))
 
         # Check for completion - either via status field or phase field
         status = payload.get("status")
