@@ -102,14 +102,16 @@ class ClawdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Required(CONF_HOST, default=DEFAULT_HOST): str,
-                vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
+                vol.Required(CONF_PORT, default=DEFAULT_PORT): vol.All(
+                    int, vol.Range(min=1, max=65535)
+                ),
                 vol.Optional(CONF_TOKEN): str,
                 vol.Optional(
                     CONF_USE_SSL, default=DEFAULT_USE_SSL
                 ): bool,
                 vol.Optional(
                     CONF_TIMEOUT, default=DEFAULT_TIMEOUT
-                ): int,
+                ): vol.All(int, vol.Range(min=5, max=300)),
             }
         )
 
@@ -178,8 +180,8 @@ class ClawdOptionsFlowHandler(config_entries.OptionsFlow):
                 ): str,
                 vol.Required(
                     CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)
-                ): int,
-                vol.Optional(CONF_TOKEN, default=current.get(CONF_TOKEN, "")): str,
+                ): vol.All(int, vol.Range(min=1, max=65535)),
+                vol.Optional(CONF_TOKEN, default=current.get(CONF_TOKEN)): str,
                 vol.Optional(
                     CONF_USE_SSL,
                     default=current.get(CONF_USE_SSL, DEFAULT_USE_SSL),
@@ -187,7 +189,7 @@ class ClawdOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_TIMEOUT,
                     default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
-                ): int,
+                ): vol.All(int, vol.Range(min=5, max=300)),
             }
         )
 

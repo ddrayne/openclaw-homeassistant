@@ -56,14 +56,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading Clawd integration")
 
+    # Get client before unloading
+    gateway_client: ClawdGatewayClient = hass.data[DOMAIN][entry.entry_id]
+
     # Unload conversation platform
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
-    # Disconnect and cleanup Gateway client
-    if unload_ok:
-        gateway_client: ClawdGatewayClient = hass.data[DOMAIN].pop(entry.entry_id)
-        await gateway_client.disconnect()
-        _LOGGER.info("Disconnected from Clawd Gateway")
+    # Always disconnect and cleanup, even if unload failed
+    await gateway_client.disconnect()
+    hass.data[DOMAIN].pop(entry.entry_id, None)
+    _LOGGER.info("Disconnected from Clawd Gateway")
 
     return unload_ok
 

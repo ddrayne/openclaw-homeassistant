@@ -68,13 +68,13 @@ class ClawdGatewayClient:
         """Connect to Gateway."""
         await self._gateway.connect()
 
-        # Wait for connection to be established
-        for _ in range(50):  # Wait up to 5 seconds
-            if self._gateway.connected:
-                return
-            await asyncio.sleep(0.1)
-
-        _LOGGER.warning("Connection may not be fully established")
+        # Wait for connection to be established (event-based, no polling)
+        try:
+            await asyncio.wait_for(
+                self._gateway._connected_event.wait(), timeout=5.0
+            )
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Connection timeout - Gateway may not be reachable")
 
     async def disconnect(self) -> None:
         """Disconnect from Gateway."""

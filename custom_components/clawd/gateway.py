@@ -45,6 +45,7 @@ class GatewayProtocol:
         # Connection state
         self._websocket: WebSocketClientProtocol | None = None
         self._connected = False
+        self._connected_event = asyncio.Event()
         self._connect_task: asyncio.Task | None = None
         self._receive_task: asyncio.Task | None = None
 
@@ -74,6 +75,7 @@ class GatewayProtocol:
         """Disconnect from the Gateway."""
         _LOGGER.info("Disconnecting from Gateway")
         self._connected = False
+        self._connected_event.clear()
 
         # Cancel tasks
         if self._receive_task:
@@ -117,6 +119,7 @@ class GatewayProtocol:
                     try:
                         await self._handshake()
                         self._connected = True
+                        self._connected_event.set()
                         _LOGGER.info("Connected to Gateway successfully")
 
                         # Start receive loop
@@ -131,6 +134,7 @@ class GatewayProtocol:
                     ) as err:
                         _LOGGER.error("Gateway error: %s", err)
                         self._connected = False
+                        self._connected_event.clear()
                         raise
 
                     except Exception as err:  # pylint: disable=broad-except
@@ -140,6 +144,7 @@ class GatewayProtocol:
                             exc_info=True,
                         )
                         self._connected = False
+                        self._connected_event.clear()
 
                     finally:
                         if self._receive_task:
@@ -151,6 +156,14 @@ class GatewayProtocol:
 
             except asyncio.CancelledError:
                 _LOGGER.debug("Connection loop cancelled")
+                break
+
+            except (GatewayAuthenticationError, ProtocolError):
+                # Don't retry auth/protocol errors - these require user intervention
+                _LOGGER.error(
+                    "Fatal error - authentication or protocol issue. "
+                    "Stopping connection attempts."
+                )
                 break
 
             except Exception as err:  # pylint: disable=broad-except
