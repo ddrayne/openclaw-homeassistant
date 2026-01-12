@@ -50,6 +50,11 @@ class ClawdConversationEntity(conversation.ConversationEntity):
         """Return if entity is available."""
         return self._gateway_client.connected
 
+    @property
+    def supported_languages(self) -> list[str] | str:
+        """Return supported languages."""
+        return "*"
+
     async def _async_handle_message(
         self,
         user_input: conversation.ConversationInput,
