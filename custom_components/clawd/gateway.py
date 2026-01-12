@@ -223,7 +223,8 @@ class GatewayProtocol:
 
             if not response.get("ok"):
                 error_msg = response.get("error", "Unknown error")
-                if "auth" in error_msg.lower() or "token" in error_msg.lower():
+                error_str = str(error_msg) if not isinstance(error_msg, str) else error_msg
+                if "auth" in error_str.lower() or "token" in error_str.lower():
                     raise GatewayAuthenticationError(
                         f"Authentication failed: {error_msg}"
                     )
