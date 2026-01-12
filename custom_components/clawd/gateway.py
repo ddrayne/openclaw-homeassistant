@@ -320,8 +320,9 @@ class GatewayProtocol:
                 if not future.done():
                     future.set_result(message)
             else:
-                _LOGGER.warning(
-                    "Received response for unknown request: %s",
+                # Response arrived after timeout/cleanup - this is normal
+                _LOGGER.debug(
+                    "Received response for request that already timed out: %s",
                     request_id,
                 )
 
