@@ -360,7 +360,9 @@ class GatewayProtocol:
         """Register an event handler."""
         if event_name not in self._event_handlers:
             self._event_handlers[event_name] = []
-        self._event_handlers[event_name].append(handler)
+        # Prevent duplicate handler registration
+        if handler not in self._event_handlers[event_name]:
+            self._event_handlers[event_name].append(handler)
 
     async def send_request(
         self,
