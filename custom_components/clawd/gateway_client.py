@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -24,11 +25,32 @@ class AgentRun:
         self.status: str | None = None
         self.summary: str | None = None
         self.complete_event = asyncio.Event()
+        # For deduplication of Gateway duplicate events
+        self._last_text: str | None = None
+        self._last_text_time: float = 0.0
 
     def add_output(self, output: str) -> None:
-        """Add output to buffer."""
-        if output:
-            self.output_parts.append(output)
+        """Add output to buffer, with deduplication for Gateway duplicates."""
+        if not output:
+            return
+
+        current_time = time.time()
+
+        # Deduplicate: if same text arrives within 50ms, it's likely a Gateway duplicate
+        if (
+            output == self._last_text
+            and (current_time - self._last_text_time) < 0.05
+        ):
+            _LOGGER.debug(
+                "Ignoring duplicate text for %s (same as %.3fs ago)",
+                self.run_id,
+                current_time - self._last_text_time,
+            )
+            return
+
+        self._last_text = output
+        self._last_text_time = current_time
+        self.output_parts.append(output)
 
     def set_complete(self, status: str, summary: str | None = None) -> None:
         """Mark run as complete."""
