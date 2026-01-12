@@ -4,16 +4,26 @@
   <img src="custom_components/clawd/icon.png" alt="Clawd Icon" width="128" height="128">
 </p>
 
-Integrate [Clawdbot](https://docs.clawd.bot/) with Home Assistant's voice control system, enabling your voice assistant to be powered by Claude through Clawd.
+Integrate [Clawdbot](https://clawd.bot/) with Home Assistant's voice control system, bringing your personal AI agent to your smart home.
 
-Use Claude as your conversation agent in Home Assistant, bringing natural language understanding and intelligent responses to your smart home voice commands and Assist interface.
+**Clawdbot** is an open-source AI agent system that runs locally on your machine. It can browse the web, manage emails and calendar, access files, execute commands, and integrate with 50+ services like Gmail, GitHub, Spotify, and Obsidian. Works with Claude, GPT, or local AI models.
+
+This integration lets you access your **entire Clawdbot agent** - with all its skills, integrations, memory, and capabilities - through Home Assistant's voice interface and Assist. Whatever your Clawdbot can do in WhatsApp, Telegram, or Discord, it can now do through your smart home voice assistant.
 
 ## Features
 
-- **Direct WebSocket Integration**: Real-time connection to Clawdbot Gateway
-- **Universal Language Support**: Works with any language Claude supports
+### Clawdbot Agent Capabilities
+- **Full Agent Access**: Complete access to your Clawdbot agent with all configured skills and integrations
+- **System Integration**: Browse web, manage files, execute commands - everything your Clawdbot can do
+- **Service Integrations**: Access Gmail, Calendar, GitHub, Spotify, Obsidian, and 50+ other services
+- **Persistent Memory**: Your Clawdbot's memory and context carry over to voice interactions
+- **Custom Skills**: Use any custom skills or plugins you've installed in Clawdbot
+- **Multi-Model Support**: Works with whatever AI model you've configured (Claude, GPT, local models)
+
+### Integration Features
+- **Direct WebSocket Connection**: Real-time connection to Clawdbot Gateway
 - **Smart TTS Processing**: Configurable emoji stripping for clean text-to-speech output
-- **Flexible Authentication**: Token-based auth with SSL/TLS support
+- **Flexible Authentication**: Secure token-based auth with SSL/TLS support
 - **Reliable Connection**: Automatic reconnection with graceful error handling
 - **Customizable Sessions**: Route conversations to different Clawdbot sessions
 - **Fast Responses**: Typical response time of 5-10 seconds for most queries
@@ -22,9 +32,10 @@ Use Claude as your conversation agent in Home Assistant, bringing natural langua
 ## Requirements
 
 - Home Assistant 2024.1.0 or later
-- Python 3.11 or later
-- A running Clawdbot Gateway (local or remote)
+- A configured [Clawdbot](https://clawd.bot/) installation with Gateway running (local or remote)
 - Gateway token (for non-localhost connections)
+
+**Note**: Clawdbot runs on macOS, Windows, and Linux. You'll need to have Clawdbot installed and configured with your desired AI model (Claude, GPT, or local) and any service integrations you want to use before connecting to Home Assistant.
 
 ## Installation
 
@@ -72,38 +83,51 @@ Use Claude as your conversation agent in Home Assistant, bringing natural langua
 
 ## Usage
 
-Once configured, your Home Assistant voice assistant will use Clawd to process conversations:
+Once configured, your Home Assistant voice assistant connects directly to your Clawdbot agent:
 
 - **Voice Commands**: Use any Home Assistant voice interface (mobile app, voice satellites, etc.)
-- **Assist Interface**: Type or speak to Claude through the Home Assistant UI
-- **Natural Conversations**: Ask questions, get explanations, have multi-turn conversations
-- **All Requests**: Sent securely to your Clawdbot Gateway's agent endpoint
+- **Assist Interface**: Type or speak to your Clawdbot through the Home Assistant UI
+- **Full Agent Access**: Your Clawdbot can check emails, manage calendar, access files, browse web, and use all configured integrations
+- **Natural Conversations**: Multi-turn conversations with persistent memory and context
+- **Secure Communication**: All requests sent securely to your Clawdbot Gateway's agent endpoint
 
 ### Example Interactions
 
-Claude can handle a wide variety of requests beyond typical voice assistant commands:
+Your Clawdbot can handle a wide variety of requests through Home Assistant voice interface:
 
-**Information & Explanations:**
-- "What's the weather like today?"
-- "Explain how solar panels work"
+**Email & Communication:**
+- "Do I have any important emails from [person]?"
+- "Send an email to [person] about tomorrow's meeting"
+- "What messages are in my inbox?"
 - "Who sent me a telegram message?"
 
-**Conversational:**
+**Calendar & Scheduling:**
+- "What's on my calendar today?"
+- "When is my next meeting?"
+- "Add a dentist appointment for next Tuesday at 2pm"
+- "Check me in for my flight tomorrow"
+
+**Information & Web:**
+- "Search for restaurants near me"
+- "What's the weather forecast for this week?"
+- "Look up the latest news about [topic]"
+- "Browse to [website] and summarize the main article"
+
+**Files & Documents:**
+- "Find my notes about [topic]"
+- "What's in my [filename] file?"
+- "Save this to my notes: [content]"
+
+**Conversational & Knowledge:**
 - "Who are you?"
-- "Tell me a joke"
-- "What can you help me with?"
-
-**Math & Calculations:**
+- "Explain how photosynthesis works"
 - "What's 2 plus 2?"
-- "Convert 100 fahrenheit to celsius"
-- "Calculate the area of a circle with radius 5"
+- "Tell me a joke"
 
-**General Knowledge:**
-- "What year did the first moon landing happen?"
-- "Explain photosynthesis"
-- "What's the capital of Japan?"
+**Custom Skills:**
+- Any custom skills or integrations you've configured in Clawdbot
 
-**Note**: Claude responds with natural, conversational language. For home automation commands, you may want to use Home Assistant's built-in intents alongside Claude for the best experience.
+**Note**: The exact capabilities depend on your Clawdbot configuration, installed skills, and service integrations. For basic home automation commands like "turn on the lights", you may want to use Home Assistant's built-in intents alongside Clawdbot for the best experience.
 
 ## Remote Gateway Setup
 
@@ -168,10 +192,11 @@ Then configure the integration:
 
 ## Limitations
 
-- **Response time**: Typical queries take 5-10 seconds. While faster than early AI assistants, this is still slower than traditional rule-based voice assistants (1-2 seconds)
+- **Response time**: Typical queries take 5-10 seconds. Agent tasks (emails, web browsing, file access) may take longer depending on complexity. This is slower than traditional rule-based voice assistants (1-2 seconds) but provides significantly more capability
 - **Streaming**: Responses are buffered and returned complete (no streaming TTS support during generation)
-- **Home Automation**: Best used alongside Home Assistant's native intents for device control. Claude excels at information, conversation, and complex queries rather than simple "turn on the lights" commands
-- **Context**: Conversation history is managed by Home Assistant's ChatLog (persists across queries within a conversation)
+- **Home Automation**: Best used alongside Home Assistant's native intents for device control. Your Clawdbot excels at information, complex tasks, email/calendar management, and agentic workflows rather than simple "turn on the lights" commands
+- **Context**: Conversation history within Home Assistant is managed by ChatLog. Your Clawdbot's persistent memory across all platforms remains intact
+- **Capabilities**: What your voice assistant can do depends entirely on your Clawdbot configuration, installed skills, and service integrations
 
 ## Security
 
@@ -235,11 +260,12 @@ Apache License 2.0 - See LICENSE file for details
 
 ## Credits
 
-- Built for [Clawdbot](https://docs.clawd.bot/) by Anthropic
-- Home Assistant conversation entity integration
+- **Clawdbot**: Open-source AI agent system by Anthropic - [clawd.bot](https://clawd.bot/)
+- **Integration**: Home Assistant conversation entity integration for Clawdbot Gateway
 
 ## Support
 
-- Report issues: [GitHub Issues](https://github.com/ddrayne/clawd-homeassistant/issues)
-- Clawdbot documentation: [https://docs.clawd.bot/](https://docs.clawd.bot/)
-- Home Assistant community: [https://community.home-assistant.io/](https://community.home-assistant.io/)
+- **Integration Issues**: [GitHub Issues](https://github.com/ddrayne/clawd-homeassistant/issues)
+- **Clawdbot Website**: [https://clawd.bot/](https://clawd.bot/)
+- **Clawdbot Documentation**: [https://docs.clawd.bot/](https://docs.clawd.bot/)
+- **Home Assistant Community**: [https://community.home-assistant.io/](https://community.home-assistant.io/)
