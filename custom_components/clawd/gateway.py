@@ -187,6 +187,9 @@ class GatewayProtocol:
                 "platform": CLIENT_PLATFORM,
                 "mode": CLIENT_MODE,
             },
+            "caps": [],  # No special capabilities
+            "locale": "en-US",
+            "userAgent": f"{CLIENT_NAME}/{CLIENT_VERSION}",
         }
 
         # Add authentication if token is provided
