@@ -199,17 +199,30 @@ class ClawdGatewayClient:
             _LOGGER.debug("Agent event for unknown run: %s", run_id)
             return
 
+        # Log event details for debugging
+        _LOGGER.debug(
+            "Agent event for %s: status=%s, output=%s, summary=%s, data keys=%s",
+            run_id,
+            payload.get("status"),
+            "yes" if payload.get("output") else "no",
+            "yes" if payload.get("summary") else "no",
+            list(payload.get("data", {}).keys()) if "data" in payload else "none",
+        )
+
         # Buffer output
         output = payload.get("output")
         if output:
             agent_run.add_output(output)
+            _LOGGER.debug("Buffered output for %s: %d chars", run_id, len(output))
 
         # Check for completion
         status = payload.get("status")
         if status in ("ok", "error"):
             summary = payload.get("summary")
             agent_run.set_complete(status, summary)
-            _LOGGER.debug("Agent run %s completed with status: %s", run_id, status)
+            _LOGGER.info("Agent run %s completed with status: %s", run_id, status)
+        elif status:
+            _LOGGER.debug("Agent run %s status: %s (not complete)", run_id, status)
 
     async def health(self) -> dict[str, Any]:
         """Get Gateway health status."""
