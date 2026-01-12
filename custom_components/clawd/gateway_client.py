@@ -55,10 +55,12 @@ class ClawdGatewayClient:
         token: str | None,
         use_ssl: bool = False,
         timeout: int = 30,
+        session_key: str = "main",
     ) -> None:
         """Initialize the Gateway client."""
         self._gateway = GatewayProtocol(host, port, token, use_ssl)
         self._timeout = timeout
+        self._session_key = session_key
         self._agent_runs: dict[str, AgentRun] = {}
 
         # Register event handler
@@ -115,7 +117,7 @@ class ClawdGatewayClient:
                 method="agent",
                 params={
                     "message": message,
-                    "sessionKey": "main",  # Use main direct-chat session
+                    "sessionKey": self._session_key,
                     "idempotencyKey": idempotency_key,
                 },
                 timeout=10.0,  # Initial ack should be quick

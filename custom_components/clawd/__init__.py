@@ -6,7 +6,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN, CONF_TIMEOUT, Platform
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_USE_SSL, DEFAULT_TIMEOUT, DEFAULT_USE_SSL, DOMAIN
+from .const import (
+    CONF_SESSION_KEY,
+    CONF_USE_SSL,
+    DEFAULT_SESSION_KEY,
+    DEFAULT_TIMEOUT,
+    DEFAULT_USE_SSL,
+    DOMAIN,
+)
 from .gateway_client import ClawdGatewayClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         token=entry.data.get(CONF_TOKEN),
         use_ssl=entry.data.get(CONF_USE_SSL, DEFAULT_USE_SSL),
         timeout=entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
+        session_key=entry.data.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY),
     )
 
     # Connect to Gateway

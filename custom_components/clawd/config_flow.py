@@ -11,9 +11,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
+    CONF_SESSION_KEY,
     CONF_USE_SSL,
     DEFAULT_HOST,
     DEFAULT_PORT,
+    DEFAULT_SESSION_KEY,
     DEFAULT_TIMEOUT,
     DEFAULT_USE_SSL,
     DOMAIN,
@@ -112,6 +114,9 @@ class ClawdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_TIMEOUT, default=DEFAULT_TIMEOUT
                 ): vol.All(int, vol.Range(min=5, max=300)),
+                vol.Optional(
+                    CONF_SESSION_KEY, default=DEFAULT_SESSION_KEY
+                ): str,
             }
         )
 
@@ -186,6 +191,10 @@ class ClawdOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_TIMEOUT,
                     default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
                 ): vol.All(int, vol.Range(min=5, max=300)),
+                vol.Optional(
+                    CONF_SESSION_KEY,
+                    default=current.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY),
+                ): str,
             }
         )
 
