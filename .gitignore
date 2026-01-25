@@ -101,6 +101,9 @@ dmypy.json
 .vscode/
 .idea/
 .claude/
+
+# GSD planning intel (regenerated, local-only)
+.planning/intel/
 *.swp
 *.swo
 *~
