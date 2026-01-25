@@ -10,6 +10,7 @@ test = [
     "pytest-homeassistant-custom-component>=0.13.200",
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.12.0",
+    "websockets>=12.0",
 ]
 
 [tool.pytest.ini_options]
