@@ -2,6 +2,7 @@
 
 import logging
 import re
+from typing import Any
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
@@ -64,6 +65,28 @@ class ClawdConversationEntity(conversation.ConversationEntity):
         self._config_entry = config_entry
         self._gateway_client = gateway_client
         self._attr_unique_id = config_entry.entry_id
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device info for the gateway."""
+        return {
+            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
+            "name": "Clawd Gateway",
+            "manufacturer": "Clawdbot",
+            "model": "Gateway",
+        }
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes for diagnostics."""
+        data = self._config_entry.data
+        return {
+            "host": data.get("host"),
+            "port": data.get("port"),
+            "use_ssl": data.get("use_ssl"),
+            "session_key": data.get("session_key"),
+            "strip_emojis": data.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS),
+        }
 
     @property
     def available(self) -> bool:
