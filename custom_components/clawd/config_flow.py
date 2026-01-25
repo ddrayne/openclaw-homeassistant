@@ -1,5 +1,6 @@
 """Config flow for Clawd integration."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -9,6 +10,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN, CONF_TIMEOUT
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import aiohttp_client, selector
 
 from .const import (
     CONF_SESSION_KEY,
@@ -61,6 +63,64 @@ async def validate_connection(
         await client.disconnect()
 
 
+async def _async_fetch_sessions(
+    hass: HomeAssistant, data: dict[str, Any]
+) -> list[str]:
+    """Fetch available session keys from the Gateway."""
+    scheme = "https" if data.get(CONF_USE_SSL, DEFAULT_USE_SSL) else "http"
+    url = f"{scheme}://{data[CONF_HOST]}:{data[CONF_PORT]}/sessions"
+    headers: dict[str, str] = {}
+    token = data.get(CONF_TOKEN)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    session = aiohttp_client.async_get_clientsession(hass)
+    try:
+        async with session.get(url, headers=headers, timeout=10) as resp:
+            if resp.status != 200:
+                _LOGGER.debug(
+                    "Session list request failed with status %s", resp.status
+                )
+                return []
+            payload = await resp.json()
+    except (asyncio.TimeoutError, OSError) as err:
+        _LOGGER.debug("Session list request failed: %s", err)
+        return []
+    except Exception as err:  # pylint: disable=broad-except
+        _LOGGER.debug("Session list request failed: %s", err)
+        return []
+
+    sessions = payload.get("sessions", [])
+    session_keys: list[str] = []
+    for item in sessions:
+        key = item.get("sessionKey") or item.get("session_key")
+        if key:
+            session_keys.append(key)
+    return session_keys
+
+
+def _build_session_selector(
+    session_keys: list[str], default_value: str
+) -> selector.SelectSelector | type[str]:
+    """Build a session selector when sessions are available."""
+    if not session_keys:
+        return str
+
+    ordered: list[str] = []
+    for key in (default_value, DEFAULT_SESSION_KEY, *session_keys):
+        if key and key not in ordered:
+            ordered.append(key)
+
+    options = [{"label": key, "value": key} for key in ordered]
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=options,
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            custom_value=True,
+        )
+    )
+
+
 class ClawdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Clawd."""
 
@@ -101,9 +161,9 @@ class ClawdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                return self.async_create_entry(
-                    title=info["title"], data=user_input
-                )
+                self._config_data = user_input
+                self._config_title = info["title"]
+                return await self.async_step_session()
 
         # Show form
         data_schema = vol.Schema(
@@ -119,9 +179,34 @@ class ClawdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_TIMEOUT, default=DEFAULT_TIMEOUT
                 ): vol.All(int, vol.Range(min=5, max=300)),
-                vol.Optional(
-                    CONF_SESSION_KEY, default=DEFAULT_SESSION_KEY
-                ): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="user", data_schema=data_schema, errors=errors
+        )
+
+    async def async_step_session(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle session selection and speech options."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            data = {**self._config_data, **user_input}
+            return self.async_create_entry(
+                title=self._config_title, data=data
+            )
+
+        current_session = self._config_data.get(
+            CONF_SESSION_KEY, DEFAULT_SESSION_KEY
+        )
+        session_keys = await _async_fetch_sessions(self.hass, self._config_data)
+        session_selector = _build_session_selector(session_keys, current_session)
+
+        data_schema = vol.Schema(
+            {
+                vol.Optional(CONF_SESSION_KEY, default=current_session): session_selector,
                 vol.Optional(
                     CONF_STRIP_EMOJIS, default=DEFAULT_STRIP_EMOJIS
                 ): bool,
@@ -132,7 +217,7 @@ class ClawdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(
-            step_id="user", data_schema=data_schema, errors=errors
+            step_id="session", data_schema=data_schema, errors=errors
         )
 
     @staticmethod
@@ -202,6 +287,12 @@ class ClawdOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Show form with current values
         current = {**self.config_entry.data, **self.config_entry.options}
+        session_keys = await _async_fetch_sessions(self.hass, current)
+        current_session = current.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY)
+        session_selector = _build_session_selector(
+            session_keys, current_session
+        )
+
         data_schema = vol.Schema(
             {
                 vol.Required(
@@ -220,9 +311,8 @@ class ClawdOptionsFlowHandler(config_entries.OptionsFlow):
                     default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
                 ): vol.All(int, vol.Range(min=5, max=300)),
                 vol.Optional(
-                    CONF_SESSION_KEY,
-                    default=current.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY),
-                ): str,
+                    CONF_SESSION_KEY, default=current_session
+                ): session_selector,
                 vol.Optional(
                     CONF_STRIP_EMOJIS,
                     default=current.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS),

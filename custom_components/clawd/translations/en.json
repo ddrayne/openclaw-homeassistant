@@ -9,7 +9,13 @@
           "port": "Port",
           "token": "Gateway Token",
           "use_ssl": "Use SSL (wss://)",
-          "timeout": "Agent Timeout (seconds)",
+          "timeout": "Agent Timeout (seconds)"
+        }
+      },
+      "session": {
+        "title": "Session and Speech",
+        "description": "Choose a session and speech options",
+        "data": {
           "session_key": "Session Key (default: main)",
           "strip_emojis": "Strip emojis from TTS speech",
           "tts_max_chars": "TTS max characters (0 = no limit)"
