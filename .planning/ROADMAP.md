@@ -13,7 +13,7 @@ Transform a functional but untested Home Assistant integration into a production
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Test Infrastructure Foundation** - pytest config, fixtures, and cleanup patterns
-- [ ] **Phase 2: Simple Unit Tests** - Pure logic tests (exceptions, emoji stripping, constants)
+- [x] **Phase 2: Simple Unit Tests** - Pure logic tests (exceptions, emoji stripping, constants)
 - [ ] **Phase 3: Protocol Mocking Infrastructure** - WebSocket and client mock fixtures
 - [ ] **Phase 4: Entity & Config Flow Tests** - HA integration points with mocked dependencies
 - [ ] **Phase 5: Protocol Layer Tests** - Complex WebSocket behavior with realistic mocks
@@ -51,8 +51,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md - Constants and exceptions tests (UNIT-01, UNIT-02)
-- [ ] 02-02-PLAN.md - Emoji stripping tests (UNIT-03)
+- [x] 02-01-PLAN.md - Constants and exceptions tests (UNIT-01, UNIT-02)
+- [x] 02-02-PLAN.md - Emoji stripping tests (UNIT-03)
 
 ### Phase 3: Protocol Mocking Infrastructure
 **Goal**: Create reusable mock fixtures for GatewayProtocol and WebSocket connections that enable client layer testing
@@ -139,7 +139,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure Foundation | 3/3 | Complete | 2026-01-25 |
-| 2. Simple Unit Tests | 0/2 | Planned | - |
+| 2. Simple Unit Tests | 2/2 | Complete | 2026-01-25 |
 | 3. Protocol Mocking Infrastructure | 0/0 | Not started | - |
 | 4. Entity & Config Flow Tests | 0/0 | Not started | - |
 | 5. Protocol Layer Tests | 0/0 | Not started | - |
