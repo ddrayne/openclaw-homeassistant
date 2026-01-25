@@ -12,7 +12,7 @@ Transform a functional but untested Home Assistant integration into a production
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Test Infrastructure Foundation** - pytest config, fixtures, and cleanup patterns
+- [x] **Phase 1: Test Infrastructure Foundation** - pytest config, fixtures, and cleanup patterns
 - [ ] **Phase 2: Simple Unit Tests** - Pure logic tests (exceptions, emoji stripping, constants)
 - [ ] **Phase 3: Protocol Mocking Infrastructure** - WebSocket and client mock fixtures
 - [ ] **Phase 4: Entity & Config Flow Tests** - HA integration points with mocked dependencies
@@ -35,9 +35,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md - Create pytest configuration and test directory structure
-- [ ] 01-02-PLAN.md - Create core test fixtures (hass, config entry, WebSocket mocks)
-- [ ] 01-03-PLAN.md - Verify infrastructure with smoke tests
+- [x] 01-01-PLAN.md - Create pytest configuration and test directory structure
+- [x] 01-02-PLAN.md - Create core test fixtures (hass, config entry, WebSocket mocks)
+- [x] 01-03-PLAN.md - Verify infrastructure with smoke tests
 
 ### Phase 2: Simple Unit Tests
 **Goal**: Build confidence with tests for pure logic (no async, no external dependencies) covering exceptions, constants, and text processing
@@ -137,7 +137,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Test Infrastructure Foundation | 0/3 | Planned | - |
+| 1. Test Infrastructure Foundation | 3/3 | Complete | 2026-01-25 |
 | 2. Simple Unit Tests | 0/0 | Not started | - |
 | 3. Protocol Mocking Infrastructure | 0/0 | Not started | - |
 | 4. Entity & Config Flow Tests | 0/0 | Not started | - |

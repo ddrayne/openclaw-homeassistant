@@ -9,11 +9,11 @@ Requirements for comprehensive test coverage and robustness improvements.
 
 ### Test Infrastructure
 
-- [ ] **INFRA-01**: pytest configuration with asyncio mode and proper event loop scope
-- [ ] **INFRA-02**: Common fixtures for mock hass object and mock config entry
-- [ ] **INFRA-03**: WebSocket mock fixtures for gateway protocol testing
-- [ ] **INFRA-04**: Test cleanup patterns to prevent resource leaks and flaky tests
-- [ ] **INFRA-05**: Nice test runner with clear output, coverage reporting, and easy CLI invocation
+- [x] **INFRA-01**: pytest configuration with asyncio mode and proper event loop scope
+- [x] **INFRA-02**: Common fixtures for mock hass object and mock config entry
+- [x] **INFRA-03**: WebSocket mock fixtures for gateway protocol testing
+- [x] **INFRA-04**: Test cleanup patterns to prevent resource leaks and flaky tests
+- [x] **INFRA-05**: Nice test runner with clear output, coverage reporting, and easy CLI invocation
 
 ### Unit Tests
 
@@ -74,11 +74,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 1 | Pending |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
-| INFRA-04 | Phase 1 | Pending |
-| INFRA-05 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
+| INFRA-02 | Phase 1 | Complete |
+| INFRA-03 | Phase 1 | Complete |
+| INFRA-04 | Phase 1 | Complete |
+| INFRA-05 | Phase 1 | Complete |
 | UNIT-01 | Phase 2 | Pending |
 | UNIT-02 | Phase 2 | Pending |
 | UNIT-03 | Phase 2 | Pending |
