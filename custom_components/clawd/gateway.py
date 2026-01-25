@@ -224,19 +224,29 @@ class GatewayProtocol:
         _LOGGER.debug("Sending connect request")
         await self._websocket.send(json.dumps(connect_request))
 
-        # Wait for response
+        # Wait for response (skip any events that arrive first)
         try:
-            response_text = await asyncio.wait_for(
-                self._websocket.recv(), timeout=10.0
-            )
-            response = json.loads(response_text)
-
-            _LOGGER.debug("Received connect response: %s", response)
-
-            if response.get("type") != "res":
-                raise ProtocolError(
-                    f"Expected response, got {response.get('type')}"
+            while True:
+                response_text = await asyncio.wait_for(
+                    self._websocket.recv(), timeout=10.0
                 )
+                response = json.loads(response_text)
+
+                if response.get("type") == "event":
+                    _LOGGER.debug(
+                        "Received event during handshake, skipping: %s",
+                        response.get("event"),
+                    )
+                    continue
+
+                _LOGGER.debug("Received connect response: %s", response)
+
+                if response.get("type") != "res":
+                    raise ProtocolError(
+                        f"Expected response, got {response.get('type')}"
+                    )
+
+                break
 
             if response.get("id") != request_id:
                 raise ProtocolError("Response ID mismatch")
