@@ -32,6 +32,7 @@ async def test_unload_returns_true_when_entry_missing() -> None:
 
     class Platform:
         CONVERSATION = "conversation"
+        SENSOR = "sensor"
 
     const_mod.CONF_HOST = "host"
     const_mod.CONF_PORT = "port"

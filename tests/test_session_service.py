@@ -32,6 +32,7 @@ async def test_set_session_service_updates_client() -> None:
 
     class Platform:
         CONVERSATION = "conversation"
+        SENSOR = "sensor"
 
     const_mod.CONF_HOST = "host"
     const_mod.CONF_PORT = "port"

@@ -32,6 +32,7 @@ async def test_reconnect_service_calls_clients() -> None:
 
     class Platform:
         CONVERSATION = "conversation"
+        SENSOR = "sensor"
 
     const_mod.CONF_HOST = "host"
     const_mod.CONF_PORT = "port"
