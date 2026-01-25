@@ -33,6 +33,14 @@ This integration lets you access your **entire Clawdbot agent** - with all its s
 - **Easy Configuration**: Simple UI-based setup through Home Assistant
 - **Diagnostics Support**: Built-in diagnostics for troubleshooting
 
+## Documentation
+
+📚 **Additional Guides:**
+
+- **[Roadmap & Enhancement Plan](ROADMAP.md)** - Planned features, optimizations, and development priorities
+- **[Gateway API Documentation](GATEWAY_API.md)** - Comprehensive Clawdbot Gateway API reference for developers
+- **[Agent Configuration Guide](AGENTS.md)** - Understanding and configuring Clawdbot agents for optimal voice assistant performance
+
 ## Requirements
 
 - Home Assistant 2024.1.0 or later
