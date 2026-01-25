@@ -213,6 +213,13 @@ Then configure the integration:
 - Increase the timeout setting in integration options if needed
 - Check Gateway logs for issues
 
+### Diagnostics
+
+Home Assistant provides a diagnostics panel for the integration:
+
+- Go to **Settings** → **Devices & Services** → **Clawd** → **Diagnostics**
+- Includes connection status, health info, and redacted configuration
+
 ### Performance Issues
 
 **Slow responses:**
