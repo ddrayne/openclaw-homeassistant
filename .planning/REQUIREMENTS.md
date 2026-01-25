@@ -25,14 +25,14 @@ Requirements for comprehensive test coverage and robustness improvements.
 
 ### Integration Tests
 
-- [ ] **INTG-01**: Config flow user step validation tests
-- [ ] **INTG-02**: Config flow error handling tests (connection, auth, timeout)
+- [x] **INTG-01**: Config flow user step validation tests
+- [x] **INTG-02**: Config flow error handling tests (connection, auth, timeout)
 - [ ] **INTG-03**: Config flow options flow tests
-- [ ] **INTG-04**: Conversation entity message handling tests
-- [ ] **INTG-05**: Conversation entity response formatting tests
+- [x] **INTG-04**: Conversation entity message handling tests
+- [x] **INTG-05**: Conversation entity response formatting tests
 - [ ] **INTG-06**: Gateway client request/response tests
 - [ ] **INTG-07**: Gateway client timeout handling tests
-- [ ] **INTG-08**: Reconnection behavior tests (disconnect, reconnect, state recovery)
+- [x] **INTG-08**: Reconnection behavior tests (disconnect, reconnect, state recovery)
 - [ ] **INTG-09**: Connection state change handling tests
 
 ### Robustness
@@ -82,20 +82,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UNIT-01 | Phase 2 | Complete |
 | UNIT-02 | Phase 2 | Complete |
 | UNIT-03 | Phase 2 | Complete |
-| UNIT-04 | Phase 3 | Pending |
-| UNIT-05 | Phase 3 | Pending |
-| INTG-01 | Phase 4 | Pending |
-| INTG-02 | Phase 4 | Pending |
-| INTG-03 | Phase 4 | Pending |
-| INTG-04 | Phase 4 | Pending |
-| INTG-05 | Phase 4 | Pending |
-| INTG-06 | Phase 3 | Pending |
-| INTG-07 | Phase 3 | Pending |
-| INTG-08 | Phase 5 | Pending |
-| INTG-09 | Phase 5 | Pending |
-| ROBU-01 | Phase 7 | Pending |
-| ROBU-02 | Phase 7 | Pending |
-| ROBU-03 | Phase 7 | Pending |
+| UNIT-04 | Deferred | - |
+| UNIT-05 | Deferred | - |
+| INTG-01 | Phase 3 | Complete |
+| INTG-02 | Phase 3 | Complete |
+| INTG-03 | Deferred | - |
+| INTG-04 | Phase 3 | Complete |
+| INTG-05 | Phase 3 | Complete |
+| INTG-06 | Deferred | - |
+| INTG-07 | Deferred | - |
+| INTG-08 | Phase 3 | Complete |
+| INTG-09 | Deferred | - |
+| ROBU-01 | Phase 4 | Pending |
+| ROBU-02 | Phase 4 | Pending |
+| ROBU-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 22 total
@@ -104,4 +104,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-01-25*
-*Last updated: 2026-01-25 after Phase 2 completion*
+*Last updated: 2026-01-25 after Phase 3 completion (roadmap slimmed to 4 phases)*
