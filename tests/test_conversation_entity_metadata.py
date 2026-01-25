@@ -94,14 +94,20 @@ def test_entity_metadata_properties() -> None:
         "strip_emojis": True,
         "tts_max_chars": 200,
     }
+    entry.options = {
+        "use_ssl": True,
+        "strip_emojis": False,
+        "tts_max_chars": 123,
+    }
 
     entity = conversation.ClawdConversationEntity(entry, MagicMock())
 
     assert entity.device_info["identifiers"] == {(conversation.DOMAIN, "entry-1")}
     assert entity.device_info["manufacturer"] == "Clawdbot"
     assert entity.extra_state_attributes["host"] == "localhost"
-    assert entity.extra_state_attributes["strip_emojis"] is True
-    assert entity.extra_state_attributes["tts_max_chars"] == 200
+    assert entity.extra_state_attributes["use_ssl"] is True
+    assert entity.extra_state_attributes["strip_emojis"] is False
+    assert entity.extra_state_attributes["tts_max_chars"] == 123
 
 
 def test_trim_tts_text() -> None:
@@ -119,6 +125,7 @@ def test_error_message_added_to_chat_log() -> None:
     entry = MagicMock()
     entry.entry_id = "entry-1"
     entry.data = {"strip_emojis": True}
+    entry.options = {}
     entity = conversation.ClawdConversationEntity(entry, MagicMock())
 
     user_input = MagicMock()

@@ -177,14 +177,31 @@ class ClawdOptionsFlowHandler(config_entries.OptionsFlow):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                # Update config entry data
+                data = dict(user_input)
+                options = {
+                    CONF_TOKEN: user_input.get(CONF_TOKEN),
+                    CONF_USE_SSL: user_input.get(CONF_USE_SSL, DEFAULT_USE_SSL),
+                    CONF_TIMEOUT: user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
+                    CONF_SESSION_KEY: user_input.get(
+                        CONF_SESSION_KEY, DEFAULT_SESSION_KEY
+                    ),
+                    CONF_STRIP_EMOJIS: user_input.get(
+                        CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS
+                    ),
+                    CONF_TTS_MAX_CHARS: user_input.get(
+                        CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS
+                    ),
+                }
                 self.hass.config_entries.async_update_entry(
-                    self.config_entry, data=user_input
+                    self.config_entry,
+                    data=data,
+                    options=options,
+                    unique_id=f"{data[CONF_HOST]}:{data[CONF_PORT]}",
                 )
                 return self.async_create_entry(title="", data={})
 
         # Show form with current values
-        current = self.config_entry.data
+        current = {**self.config_entry.data, **self.config_entry.options}
         data_schema = vol.Schema(
             {
                 vol.Required(

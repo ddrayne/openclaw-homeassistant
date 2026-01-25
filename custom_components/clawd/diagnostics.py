@@ -11,10 +11,11 @@ from .const import DOMAIN
 from .gateway_client import ClawdGatewayClient
 
 
-def _redact_entry(entry: ConfigEntry) -> dict[str, Any]:
-    data = dict(entry.data)
-    if "token" in data and data["token"]:
-        data["token"] = "REDACTED"
+def _redact(data: dict[str, Any]) -> dict[str, Any]:
+    redacted = dict(data)
+    if "token" in redacted and redacted["token"]:
+        redacted["token"] = "REDACTED"
+    return redacted
     return data
 
 
@@ -27,7 +28,8 @@ async def async_get_config_entry_diagnostics(
     )
 
     diagnostics: dict[str, Any] = {
-        "config": _redact_entry(entry),
+        "config": _redact(entry.data),
+        "options": _redact(entry.options),
         "connected": gateway_client.connected if gateway_client else False,
     }
 

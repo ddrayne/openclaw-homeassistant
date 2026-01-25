@@ -44,6 +44,7 @@ async def test_diagnostics_redacts_token_and_includes_health() -> None:
     entry = MagicMock()
     entry.entry_id = "entry-1"
     entry.data = {"host": "localhost", "token": "secret"}
+    entry.options = {"token": "secret2"}
 
     client = AsyncMock()
     client.connected = True
@@ -55,5 +56,6 @@ async def test_diagnostics_redacts_token_and_includes_health() -> None:
     result = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
 
     assert result["config"]["token"] == "REDACTED"
+    assert result["options"]["token"] == "REDACTED"
     assert result["connected"] is True
     assert result["health"] == {"status": "ok"}

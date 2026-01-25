@@ -94,7 +94,7 @@ class ClawdConversationEntity(conversation.ConversationEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra attributes for diagnostics."""
-        data = self._config_entry.data
+        data = {**self._config_entry.data, **self._config_entry.options}
         return {
             "host": data.get("host"),
             "port": data.get("port"),
@@ -145,11 +145,12 @@ class ClawdConversationEntity(conversation.ConversationEntity):
 
             # Create intent response, optionally strip emojis for TTS
             intent_response = intent.IntentResponse(language=user_input.language)
-            should_strip = self._config_entry.data.get(
+            config = {**self._config_entry.data, **self._config_entry.options}
+            should_strip = config.get(
                 CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS
             )
             speech_text = strip_emojis(response_text) if should_strip else response_text
-            max_chars = self._config_entry.data.get(
+            max_chars = config.get(
                 CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS
             )
             speech_text = trim_tts_text(speech_text, max_chars)
