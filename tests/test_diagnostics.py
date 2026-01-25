@@ -11,20 +11,8 @@ import pytest
 
 def _stub_module(name: str) -> ModuleType:
     module = ModuleType(name)
-    sys.modules.setdefault(name, module)
+    sys.modules[name] = module
     return module
-
-
-def _ensure_ha_stubs() -> bool:
-    try:
-        import homeassistant  # noqa: F401
-        import homeassistant.helpers.event  # noqa: F401
-        return False
-    except Exception:
-        for name in list(sys.modules):
-            if name == "homeassistant" or name.startswith("homeassistant."):
-                sys.modules.pop(name, None)
-        return True
 
 
 def _load_module(name: str, path: Path):
@@ -37,12 +25,11 @@ def _load_module(name: str, path: Path):
 
 @pytest.mark.asyncio
 async def test_diagnostics_redacts_token_and_includes_health() -> None:
-    if _ensure_ha_stubs():
-        _stub_module("homeassistant")
-        config_entries_mod = _stub_module("homeassistant.config_entries")
-        core_mod = _stub_module("homeassistant.core")
-        config_entries_mod.ConfigEntry = object
-        core_mod.HomeAssistant = object
+    _stub_module("homeassistant")
+    config_entries_mod = _stub_module("homeassistant.config_entries")
+    core_mod = _stub_module("homeassistant.core")
+    config_entries_mod.ConfigEntry = object
+    core_mod.HomeAssistant = object
 
     base = Path(__file__).parent.parent / "custom_components" / "clawd"
     sys.modules.setdefault("custom_components", ModuleType("custom_components"))

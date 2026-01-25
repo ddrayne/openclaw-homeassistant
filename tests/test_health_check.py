@@ -11,20 +11,8 @@ import pytest
 
 def _stub_module(name: str) -> ModuleType:
     module = ModuleType(name)
-    sys.modules.setdefault(name, module)
+    sys.modules[name] = module
     return module
-
-
-def _ensure_ha_stubs() -> bool:
-    try:
-        import homeassistant  # noqa: F401
-        import homeassistant.helpers.event  # noqa: F401
-        return False
-    except Exception:
-        for name in list(sys.modules):
-            if name == "homeassistant" or name.startswith("homeassistant."):
-                sys.modules.pop(name, None)
-        return True
 
 
 def _load_module(name: str, path: Path):
@@ -39,28 +27,24 @@ def _load_module(name: str, path: Path):
 async def test_health_check_reconnects_when_disconnected() -> None:
     captured = {}
 
-    if _ensure_ha_stubs():
-        _stub_module("homeassistant")
-        config_entries_mod = _stub_module("homeassistant.config_entries")
-        const_mod = _stub_module("homeassistant.const")
-        core_mod = _stub_module("homeassistant.core")
-        event_mod = _stub_module("homeassistant.helpers.event")
-        _stub_module("homeassistant.helpers")
+    _stub_module("homeassistant")
+    config_entries_mod = _stub_module("homeassistant.config_entries")
+    const_mod = _stub_module("homeassistant.const")
+    core_mod = _stub_module("homeassistant.core")
+    event_mod = _stub_module("homeassistant.helpers.event")
+    _stub_module("homeassistant.helpers")
 
-        class Platform:
-            CONVERSATION = "conversation"
+    class Platform:
+        CONVERSATION = "conversation"
 
-        const_mod.CONF_HOST = "host"
-        const_mod.CONF_PORT = "port"
-        const_mod.CONF_TOKEN = "token"
-        const_mod.CONF_TIMEOUT = "timeout"
-        const_mod.Platform = Platform
-        config_entries_mod.ConfigEntry = object
-        core_mod.HomeAssistant = object
-        event_mod.async_track_time_interval = lambda *args, **kwargs: None
-        event_mod.async_track_time_interval = lambda *args, **kwargs: None
-    else:
-        import homeassistant.helpers.event as event_mod
+    const_mod.CONF_HOST = "host"
+    const_mod.CONF_PORT = "port"
+    const_mod.CONF_TOKEN = "token"
+    const_mod.CONF_TIMEOUT = "timeout"
+    const_mod.Platform = Platform
+    config_entries_mod.ConfigEntry = object
+    core_mod.HomeAssistant = object
+    event_mod.async_track_time_interval = lambda *args, **kwargs: None
 
     base = Path(__file__).parent.parent / "custom_components" / "clawd"
     sys.modules.setdefault("custom_components", ModuleType("custom_components"))
@@ -117,26 +101,24 @@ async def test_health_check_reconnects_when_disconnected() -> None:
 async def test_health_check_reconnects_on_health_error() -> None:
     captured = {}
 
-    if _ensure_ha_stubs():
-        _stub_module("homeassistant")
-        config_entries_mod = _stub_module("homeassistant.config_entries")
-        const_mod = _stub_module("homeassistant.const")
-        core_mod = _stub_module("homeassistant.core")
-        event_mod = _stub_module("homeassistant.helpers.event")
-        _stub_module("homeassistant.helpers")
+    _stub_module("homeassistant")
+    config_entries_mod = _stub_module("homeassistant.config_entries")
+    const_mod = _stub_module("homeassistant.const")
+    core_mod = _stub_module("homeassistant.core")
+    event_mod = _stub_module("homeassistant.helpers.event")
+    _stub_module("homeassistant.helpers")
 
-        class Platform:
-            CONVERSATION = "conversation"
+    class Platform:
+        CONVERSATION = "conversation"
 
-        const_mod.CONF_HOST = "host"
-        const_mod.CONF_PORT = "port"
-        const_mod.CONF_TOKEN = "token"
-        const_mod.CONF_TIMEOUT = "timeout"
-        const_mod.Platform = Platform
-        config_entries_mod.ConfigEntry = object
-        core_mod.HomeAssistant = object
-    else:
-        import homeassistant.helpers.event as event_mod
+    const_mod.CONF_HOST = "host"
+    const_mod.CONF_PORT = "port"
+    const_mod.CONF_TOKEN = "token"
+    const_mod.CONF_TIMEOUT = "timeout"
+    const_mod.Platform = Platform
+    config_entries_mod.ConfigEntry = object
+    core_mod.HomeAssistant = object
+    event_mod.async_track_time_interval = lambda *args, **kwargs: None
 
     base = Path(__file__).parent.parent / "custom_components" / "clawd"
     sys.modules.setdefault("custom_components", ModuleType("custom_components"))

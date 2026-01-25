@@ -17,20 +17,7 @@ def _load_module(name: str, path: Path):
     return module
 
 
-def _ha_available() -> bool:
-    try:
-        import homeassistant  # noqa: F401
-        import homeassistant.helpers.event  # noqa: F401
-        return True
-    except Exception:
-        for name in list(sys.modules):
-            if name == "homeassistant" or name.startswith("homeassistant."):
-                sys.modules.pop(name, None)
-        return False
-
-
 @pytest.mark.asyncio
-@pytest.mark.skipif(_ha_available(), reason="Uses HA stubs only")
 async def test_reconnect_service_calls_clients() -> None:
     sys.modules.setdefault("homeassistant", ModuleType("homeassistant"))
     config_entries_mod = ModuleType("homeassistant.config_entries")

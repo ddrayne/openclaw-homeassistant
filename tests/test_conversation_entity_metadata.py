@@ -9,20 +9,8 @@ from unittest.mock import MagicMock
 
 def _stub_module(name: str) -> ModuleType:
     module = ModuleType(name)
-    sys.modules.setdefault(name, module)
+    sys.modules[name] = module
     return module
-
-
-def _ensure_ha_stubs() -> bool:
-    try:
-        import homeassistant  # noqa: F401
-        import homeassistant.helpers.event  # noqa: F401
-        return False
-    except Exception:
-        for name in list(sys.modules):
-            if name == "homeassistant" or name.startswith("homeassistant."):
-                sys.modules.pop(name, None)
-        return True
 
 
 def _load_module(name: str, path: Path):
@@ -34,52 +22,51 @@ def _load_module(name: str, path: Path):
 
 
 def _load_conversation_module():
-    if _ensure_ha_stubs():
-        _stub_module("homeassistant")
-        _stub_module("homeassistant.components")
-        conversation_mod = _stub_module("homeassistant.components.conversation")
-        config_entries_mod = _stub_module("homeassistant.config_entries")
-        core_mod = _stub_module("homeassistant.core")
-        intent_mod = _stub_module("homeassistant.helpers.intent")
-        _stub_module("homeassistant.helpers")
-        entity_platform_mod = _stub_module("homeassistant.helpers.entity_platform")
+    _stub_module("homeassistant")
+    _stub_module("homeassistant.components")
+    conversation_mod = _stub_module("homeassistant.components.conversation")
+    config_entries_mod = _stub_module("homeassistant.config_entries")
+    core_mod = _stub_module("homeassistant.core")
+    intent_mod = _stub_module("homeassistant.helpers.intent")
+    _stub_module("homeassistant.helpers")
+    entity_platform_mod = _stub_module("homeassistant.helpers.entity_platform")
 
-        class ConversationEntity:
-            pass
+    class ConversationEntity:
+        pass
 
-        class AssistantContent:
-            def __init__(self, agent_id: str, content: str) -> None:
-                self.agent_id = agent_id
-                self.content = content
+    class AssistantContent:
+        def __init__(self, agent_id: str, content: str) -> None:
+            self.agent_id = agent_id
+            self.content = content
 
-        class ConversationInput:
-            pass
+    class ConversationInput:
+        pass
 
-        class ChatLog:
-            def async_add_assistant_content_without_tools(self, _content) -> None:
-                return None
+    class ChatLog:
+        def async_add_assistant_content_without_tools(self, _content) -> None:
+            return None
 
-        class ConversationResult:
-            def __init__(self, response, conversation_id: str) -> None:
-                self.response = response
-                self.conversation_id = conversation_id
+    class ConversationResult:
+        def __init__(self, response, conversation_id: str) -> None:
+            self.response = response
+            self.conversation_id = conversation_id
 
-        class IntentResponse:
-            def __init__(self, language: str) -> None:
-                self.language = language
+    class IntentResponse:
+        def __init__(self, language: str) -> None:
+            self.language = language
 
-            def async_set_speech(self, _message: str) -> None:
-                return None
+        def async_set_speech(self, _message: str) -> None:
+            return None
 
-        conversation_mod.ConversationEntity = ConversationEntity
-        conversation_mod.AssistantContent = AssistantContent
-        conversation_mod.ConversationInput = ConversationInput
-        conversation_mod.ChatLog = ChatLog
-        conversation_mod.ConversationResult = ConversationResult
-        config_entries_mod.ConfigEntry = object
-        core_mod.HomeAssistant = object
-        intent_mod.IntentResponse = IntentResponse
-        entity_platform_mod.AddEntitiesCallback = object
+    conversation_mod.ConversationEntity = ConversationEntity
+    conversation_mod.AssistantContent = AssistantContent
+    conversation_mod.ConversationInput = ConversationInput
+    conversation_mod.ChatLog = ChatLog
+    conversation_mod.ConversationResult = ConversationResult
+    config_entries_mod.ConfigEntry = object
+    core_mod.HomeAssistant = object
+    intent_mod.IntentResponse = IntentResponse
+    entity_platform_mod.AddEntitiesCallback = object
 
     base = Path(__file__).parent.parent / "custom_components" / "clawd"
     sys.modules.setdefault("custom_components", ModuleType("custom_components"))
