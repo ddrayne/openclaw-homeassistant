@@ -57,3 +57,15 @@ def mock_websocket_connect(mock_websocket: AsyncMock) -> Generator:
 
         mock_connect.return_value = connect_generator()
         yield mock_connect, mock_websocket
+
+
+@pytest.fixture
+async def async_cleanup():
+    """Ensure async cleanup tasks can run.
+
+    Tests with async resources should depend on this fixture to prevent
+    "Event loop is closed" errors by ensuring pending callbacks are processed.
+    """
+    yield
+    # Give event loop a chance to process pending callbacks
+    await asyncio.sleep(0)
