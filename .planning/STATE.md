@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-01-25)
 
 **Core value:** Users can reliably talk to their Clawdbot agent through Home Assistant voice interfaces without connection failures or cryptic errors interrupting the experience.
-**Current focus:** Phase 2 - Handshake Protocol (next)
+**Current focus:** Phase 2 - Simple Unit Tests (in progress)
 
 ## Current Position
 
-Phase: 1 of 7 (Test Infrastructure Foundation) - COMPLETE
-Plan: 3 of 3 in current phase - COMPLETE
-Status: Phase complete, ready for Phase 2
-Last activity: 2026-01-25 - Completed 01-03-PLAN.md (Verification Smoke Tests)
+Phase: 2 of 7 (Simple Unit Tests)
+Plan: 1 of 3 in current phase - COMPLETE
+Status: In progress
+Last activity: 2026-01-25 - Completed 02-01-PLAN.md (Constants & Exceptions Tests)
 
-Progress: [███░░░░░░░] ~15%
+Progress: [████░░░░░░] ~20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 3 min
-- Total execution time: 0.17 hours
+- Total execution time: 0.22 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 3 | 10 min | 3 min |
+| 02 | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (1 min), 01-02 (1 min), 01-03 (8 min)
-- Trend: 01-03 longer due to Windows Long Path workarounds
+- Last 5 plans: 01-01 (1 min), 01-02 (1 min), 01-03 (8 min), 02-01 (3 min)
+- Trend: Consistent ~3 min average
 
 *Updated after each plan completion*
 
@@ -54,6 +55,9 @@ Recent decisions affecting current work:
 - Dual-mode fixtures work with or without HA framework (01-03)
 - HAS_HA_FRAMEWORK flag controls fixture behavior (01-03)
 - Skip markers for HA-specific tests when framework unavailable (01-03)
+- Direct module loading via importlib.util to bypass HA framework dependency (02-01)
+- Class-based test organization mirrors source file structure (02-01)
+- pytest.mark.parametrize with ids for readable exception test output (02-01)
 
 ### Pending Todos
 
@@ -66,6 +70,9 @@ None yet.
 - ~~Must establish cleanup pattern early to prevent "Event loop is closed" errors in all subsequent tests~~ RESOLVED: async_cleanup fixture created (01-02)
 - Windows Long Path issues prevent full HA framework installation - tests run in standalone mode (14/15 pass)
 
+**Phase 2 (Simple Unit Tests):**
+- Direct module loading pattern required to bypass __init__.py imports - RESOLVED with importlib.util (02-01)
+
 **Phase 5 (Protocol Layer):**
 - WebSocket mocking patterns require careful design to match real library behavior (reconnection, mid-operation failures)
 
@@ -74,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-25T16:53:00Z
-Stopped at: Completed 01-03-PLAN.md (Verification Smoke Tests) - Phase 1 complete
+Last session: 2026-01-25T17:03:00Z
+Stopped at: Completed 02-01-PLAN.md (Constants & Exceptions Tests)
 Resume file: None
