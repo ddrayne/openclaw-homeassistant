@@ -74,34 +74,34 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | TBD | Pending |
-| INFRA-02 | TBD | Pending |
-| INFRA-03 | TBD | Pending |
-| INFRA-04 | TBD | Pending |
-| INFRA-05 | TBD | Pending |
-| UNIT-01 | TBD | Pending |
-| UNIT-02 | TBD | Pending |
-| UNIT-03 | TBD | Pending |
-| UNIT-04 | TBD | Pending |
-| UNIT-05 | TBD | Pending |
-| INTG-01 | TBD | Pending |
-| INTG-02 | TBD | Pending |
-| INTG-03 | TBD | Pending |
-| INTG-04 | TBD | Pending |
-| INTG-05 | TBD | Pending |
-| INTG-06 | TBD | Pending |
-| INTG-07 | TBD | Pending |
-| INTG-08 | TBD | Pending |
-| INTG-09 | TBD | Pending |
-| ROBU-01 | TBD | Pending |
-| ROBU-02 | TBD | Pending |
-| ROBU-03 | TBD | Pending |
+| INFRA-01 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Pending |
+| INFRA-03 | Phase 1 | Pending |
+| INFRA-04 | Phase 1 | Pending |
+| INFRA-05 | Phase 1 | Pending |
+| UNIT-01 | Phase 2 | Pending |
+| UNIT-02 | Phase 2 | Pending |
+| UNIT-03 | Phase 2 | Pending |
+| UNIT-04 | Phase 3 | Pending |
+| UNIT-05 | Phase 3 | Pending |
+| INTG-01 | Phase 4 | Pending |
+| INTG-02 | Phase 4 | Pending |
+| INTG-03 | Phase 4 | Pending |
+| INTG-04 | Phase 4 | Pending |
+| INTG-05 | Phase 4 | Pending |
+| INTG-06 | Phase 3 | Pending |
+| INTG-07 | Phase 3 | Pending |
+| INTG-08 | Phase 5 | Pending |
+| INTG-09 | Phase 5 | Pending |
+| ROBU-01 | Phase 7 | Pending |
+| ROBU-02 | Phase 7 | Pending |
+| ROBU-03 | Phase 7 | Pending |
 
 **Coverage:**
 - v1 requirements: 22 total
-- Mapped to phases: 0
-- Unmapped: 22
+- Mapped to phases: 22
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-25*
-*Last updated: 2026-01-25 after initial definition*
+*Last updated: 2026-01-25 after roadmap creation*
