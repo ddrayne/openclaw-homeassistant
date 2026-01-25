@@ -32,10 +32,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Mock config entries can be created without manual setup in each test
   4. WebSocket mock fixtures exist and can simulate basic connect/disconnect
   5. All test fixtures properly cleanup async resources (no "Event loop is closed" errors)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD
+- [ ] 01-01-PLAN.md - Create pytest configuration and test directory structure
+- [ ] 01-02-PLAN.md - Create core test fixtures (hass, config entry, WebSocket mocks)
+- [ ] 01-03-PLAN.md - Verify infrastructure with smoke tests
 
 ### Phase 2: Simple Unit Tests
 **Goal**: Build confidence with tests for pure logic (no async, no external dependencies) covering exceptions, constants, and text processing
@@ -131,11 +133,11 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Test Infrastructure Foundation | 0/0 | Not started | - |
+| 1. Test Infrastructure Foundation | 0/3 | Planned | - |
 | 2. Simple Unit Tests | 0/0 | Not started | - |
 | 3. Protocol Mocking Infrastructure | 0/0 | Not started | - |
 | 4. Entity & Config Flow Tests | 0/0 | Not started | - |
