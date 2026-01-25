@@ -10,7 +10,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS, DOMAIN
+from .const import (
+    CONF_STRIP_EMOJIS,
+    CONF_TTS_MAX_CHARS,
+    DEFAULT_STRIP_EMOJIS,
+    DEFAULT_TTS_MAX_CHARS,
+    DOMAIN,
+)
 from .exceptions import (
     AgentExecutionError,
     GatewayConnectionError,
@@ -37,6 +43,15 @@ EMOJI_PATTERN = re.compile(
 def strip_emojis(text: str) -> str:
     """Remove emojis from text for TTS."""
     return EMOJI_PATTERN.sub("", text).strip()
+
+
+def trim_tts_text(text: str, max_chars: int) -> str:
+    """Trim TTS text to a max character limit."""
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3].rstrip() + "..."
 
 
 async def async_setup_entry(
@@ -86,6 +101,7 @@ class ClawdConversationEntity(conversation.ConversationEntity):
             "use_ssl": data.get("use_ssl"),
             "session_key": data.get("session_key"),
             "strip_emojis": data.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS),
+            "tts_max_chars": data.get(CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS),
         }
 
     @property
@@ -133,6 +149,10 @@ class ClawdConversationEntity(conversation.ConversationEntity):
                 CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS
             )
             speech_text = strip_emojis(response_text) if should_strip else response_text
+            max_chars = self._config_entry.data.get(
+                CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS
+            )
+            speech_text = trim_tts_text(speech_text, max_chars)
             intent_response.async_set_speech(speech_text)
 
             return conversation.ConversationResult(

@@ -23,6 +23,7 @@ CONF_USE_SSL = _const.CONF_USE_SSL
 CONF_TIMEOUT = _const.CONF_TIMEOUT
 CONF_SESSION_KEY = _const.CONF_SESSION_KEY
 CONF_STRIP_EMOJIS = _const.CONF_STRIP_EMOJIS
+CONF_TTS_MAX_CHARS = _const.CONF_TTS_MAX_CHARS
 
 
 class TestDomain:
@@ -39,3 +40,4 @@ class TestConfigurationKeys:
         assert CONF_TIMEOUT == "timeout"
         assert CONF_SESSION_KEY == "session_key"
         assert CONF_STRIP_EMOJIS == "strip_emojis"
+        assert CONF_TTS_MAX_CHARS == "tts_max_chars"

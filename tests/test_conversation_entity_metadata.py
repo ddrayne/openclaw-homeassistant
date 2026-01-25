@@ -21,8 +21,8 @@ def _load_module(name: str, path: Path):
     return module
 
 
-def test_entity_metadata_properties() -> None:
-    homeassistant = _stub_module("homeassistant")
+def _load_conversation_module():
+    _stub_module("homeassistant")
     _stub_module("homeassistant.components")
     conversation_mod = _stub_module("homeassistant.components.conversation")
     config_entries_mod = _stub_module("homeassistant.config_entries")
@@ -76,7 +76,13 @@ def test_entity_metadata_properties() -> None:
     _load_module("custom_components.clawd.exceptions", base / "exceptions.py")
     _load_module("custom_components.clawd.gateway", base / "gateway.py")
     _load_module("custom_components.clawd.gateway_client", base / "gateway_client.py")
-    conversation = _load_module("custom_components.clawd.conversation", base / "conversation.py")
+    return _load_module(
+        "custom_components.clawd.conversation", base / "conversation.py"
+    )
+
+
+def test_entity_metadata_properties() -> None:
+    conversation = _load_conversation_module()
 
     entry = MagicMock()
     entry.entry_id = "entry-1"
@@ -86,6 +92,7 @@ def test_entity_metadata_properties() -> None:
         "use_ssl": False,
         "session_key": "main",
         "strip_emojis": True,
+        "tts_max_chars": 200,
     }
 
     entity = conversation.ClawdConversationEntity(entry, MagicMock())
@@ -94,3 +101,13 @@ def test_entity_metadata_properties() -> None:
     assert entity.device_info["manufacturer"] == "Clawdbot"
     assert entity.extra_state_attributes["host"] == "localhost"
     assert entity.extra_state_attributes["strip_emojis"] is True
+    assert entity.extra_state_attributes["tts_max_chars"] == 200
+
+
+def test_trim_tts_text() -> None:
+    conversation = _load_conversation_module()
+
+    assert conversation.trim_tts_text("short", 10) == "short"
+    assert conversation.trim_tts_text("1234567890", 0) == "1234567890"
+    assert conversation.trim_tts_text("1234567890", 3) == "123"
+    assert conversation.trim_tts_text("1234567890", 6) == "123..."

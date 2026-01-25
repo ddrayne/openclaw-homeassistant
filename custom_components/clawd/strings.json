@@ -11,7 +11,8 @@
           "use_ssl": "Use SSL (wss://)",
           "timeout": "Agent Timeout (seconds)",
           "session_key": "Session Key (default: main)",
-          "strip_emojis": "Strip emojis from TTS speech"
+          "strip_emojis": "Strip emojis from TTS speech",
+          "tts_max_chars": "TTS max characters (0 = no limit)"
         }
       }
     },
@@ -37,7 +38,8 @@
           "use_ssl": "Use SSL (wss://)",
           "timeout": "Agent Timeout (seconds)",
           "session_key": "Session Key (default: main)",
-          "strip_emojis": "Strip emojis from TTS speech"
+          "strip_emojis": "Strip emojis from TTS speech",
+          "tts_max_chars": "TTS max characters (0 = no limit)"
         }
       }
     }

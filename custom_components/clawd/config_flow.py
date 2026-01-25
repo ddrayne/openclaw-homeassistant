@@ -13,11 +13,13 @@ from homeassistant.data_entry_flow import FlowResult
 from .const import (
     CONF_SESSION_KEY,
     CONF_STRIP_EMOJIS,
+    CONF_TTS_MAX_CHARS,
     CONF_USE_SSL,
     DEFAULT_HOST,
     DEFAULT_PORT,
     DEFAULT_SESSION_KEY,
     DEFAULT_STRIP_EMOJIS,
+    DEFAULT_TTS_MAX_CHARS,
     DEFAULT_TIMEOUT,
     DEFAULT_USE_SSL,
     DOMAIN,
@@ -123,6 +125,9 @@ class ClawdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_STRIP_EMOJIS, default=DEFAULT_STRIP_EMOJIS
                 ): bool,
+                vol.Optional(
+                    CONF_TTS_MAX_CHARS, default=DEFAULT_TTS_MAX_CHARS
+                ): vol.All(int, vol.Range(min=0, max=2000)),
             }
         )
 
@@ -205,6 +210,12 @@ class ClawdOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_STRIP_EMOJIS,
                     default=current.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS),
                 ): bool,
+                vol.Optional(
+                    CONF_TTS_MAX_CHARS,
+                    default=current.get(
+                        CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS
+                    ),
+                ): vol.All(int, vol.Range(min=0, max=2000)),
             }
         )
 
