@@ -11,8 +11,19 @@ import pytest
 
 def _stub_module(name: str) -> ModuleType:
     module = ModuleType(name)
-    sys.modules[name] = module
+    sys.modules.setdefault(name, module)
     return module
+
+
+def _ensure_ha_stubs() -> bool:
+    existing = sys.modules.get("homeassistant")
+    if existing is not None and not getattr(existing, "__file__", None):
+        sys.modules.pop("homeassistant", None)
+    try:
+        import homeassistant  # noqa: F401
+        return False
+    except Exception:
+        return True
 
 
 def _load_module(name: str, path: Path):
@@ -25,32 +36,30 @@ def _load_module(name: str, path: Path):
 
 @pytest.mark.asyncio
 async def test_health_check_reconnects_when_disconnected() -> None:
-    _stub_module("homeassistant")
-    config_entries_mod = _stub_module("homeassistant.config_entries")
-    const_mod = _stub_module("homeassistant.const")
-    core_mod = _stub_module("homeassistant.core")
-    event_mod = _stub_module("homeassistant.helpers.event")
-    _stub_module("homeassistant.helpers")
-
-    class Platform:
-        CONVERSATION = "conversation"
-
-    const_mod.CONF_HOST = "host"
-    const_mod.CONF_PORT = "port"
-    const_mod.CONF_TOKEN = "token"
-    const_mod.CONF_TIMEOUT = "timeout"
-    const_mod.Platform = Platform
-    config_entries_mod.ConfigEntry = object
-    core_mod.HomeAssistant = object
-
     captured = {}
 
-    def async_track_time_interval(_hass, action, interval):
-        captured["action"] = action
-        captured["interval"] = interval
-        return lambda: None
+    if _ensure_ha_stubs():
+        _stub_module("homeassistant")
+        config_entries_mod = _stub_module("homeassistant.config_entries")
+        const_mod = _stub_module("homeassistant.const")
+        core_mod = _stub_module("homeassistant.core")
+        event_mod = _stub_module("homeassistant.helpers.event")
+        _stub_module("homeassistant.helpers")
 
-    event_mod.async_track_time_interval = async_track_time_interval
+        class Platform:
+            CONVERSATION = "conversation"
+
+        const_mod.CONF_HOST = "host"
+        const_mod.CONF_PORT = "port"
+        const_mod.CONF_TOKEN = "token"
+        const_mod.CONF_TIMEOUT = "timeout"
+        const_mod.Platform = Platform
+        config_entries_mod.ConfigEntry = object
+        core_mod.HomeAssistant = object
+        event_mod.async_track_time_interval = lambda *args, **kwargs: None
+        event_mod.async_track_time_interval = lambda *args, **kwargs: None
+    else:
+        import homeassistant.helpers.event as event_mod
 
     base = Path(__file__).parent.parent / "custom_components" / "clawd"
     sys.modules.setdefault("custom_components", ModuleType("custom_components"))
@@ -83,43 +92,50 @@ async def test_health_check_reconnects_when_disconnected() -> None:
     entry.async_on_unload = MagicMock()
     entry.add_update_listener = MagicMock()
 
-    await integration.async_setup_entry(hass, entry)
-    client = ClawdGatewayClient.last_instance
-    client.connect.reset_mock()
-
-    await captured["action"](None)
-
-    client.connect.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_health_check_reconnects_on_health_error() -> None:
-    _stub_module("homeassistant")
-    config_entries_mod = _stub_module("homeassistant.config_entries")
-    const_mod = _stub_module("homeassistant.const")
-    core_mod = _stub_module("homeassistant.core")
-    event_mod = _stub_module("homeassistant.helpers.event")
-    _stub_module("homeassistant.helpers")
-
-    class Platform:
-        CONVERSATION = "conversation"
-
-    const_mod.CONF_HOST = "host"
-    const_mod.CONF_PORT = "port"
-    const_mod.CONF_TOKEN = "token"
-    const_mod.CONF_TIMEOUT = "timeout"
-    const_mod.Platform = Platform
-    config_entries_mod.ConfigEntry = object
-    core_mod.HomeAssistant = object
-
-    captured = {}
-
     def async_track_time_interval(_hass, action, interval):
         captured["action"] = action
         captured["interval"] = interval
         return lambda: None
 
-    event_mod.async_track_time_interval = async_track_time_interval
+    original_tracker = integration.async_track_time_interval
+    integration.async_track_time_interval = async_track_time_interval
+
+    try:
+        await integration.async_setup_entry(hass, entry)
+        client = ClawdGatewayClient.last_instance
+        client.connect.reset_mock()
+
+        await captured["action"](None)
+
+        client.connect.assert_called_once()
+    finally:
+        integration.async_track_time_interval = original_tracker
+
+
+@pytest.mark.asyncio
+async def test_health_check_reconnects_on_health_error() -> None:
+    captured = {}
+
+    if _ensure_ha_stubs():
+        _stub_module("homeassistant")
+        config_entries_mod = _stub_module("homeassistant.config_entries")
+        const_mod = _stub_module("homeassistant.const")
+        core_mod = _stub_module("homeassistant.core")
+        event_mod = _stub_module("homeassistant.helpers.event")
+        _stub_module("homeassistant.helpers")
+
+        class Platform:
+            CONVERSATION = "conversation"
+
+        const_mod.CONF_HOST = "host"
+        const_mod.CONF_PORT = "port"
+        const_mod.CONF_TOKEN = "token"
+        const_mod.CONF_TIMEOUT = "timeout"
+        const_mod.Platform = Platform
+        config_entries_mod.ConfigEntry = object
+        core_mod.HomeAssistant = object
+    else:
+        import homeassistant.helpers.event as event_mod
 
     base = Path(__file__).parent.parent / "custom_components" / "clawd"
     sys.modules.setdefault("custom_components", ModuleType("custom_components"))
@@ -152,12 +168,23 @@ async def test_health_check_reconnects_on_health_error() -> None:
     entry.async_on_unload = MagicMock()
     entry.add_update_listener = MagicMock()
 
-    await integration.async_setup_entry(hass, entry)
-    client = ClawdGatewayClient.last_instance
-    client.connect.reset_mock()
-    client.disconnect.reset_mock()
+    def async_track_time_interval(_hass, action, interval):
+        captured["action"] = action
+        captured["interval"] = interval
+        return lambda: None
 
-    await captured["action"](None)
+    original_tracker = integration.async_track_time_interval
+    integration.async_track_time_interval = async_track_time_interval
 
-    client.disconnect.assert_called_once()
-    client.connect.assert_called_once()
+    try:
+        await integration.async_setup_entry(hass, entry)
+        client = ClawdGatewayClient.last_instance
+        client.connect.reset_mock()
+        client.disconnect.reset_mock()
+
+        await captured["action"](None)
+
+        client.disconnect.assert_called_once()
+        client.connect.assert_called_once()
+    finally:
+        integration.async_track_time_interval = original_tracker
