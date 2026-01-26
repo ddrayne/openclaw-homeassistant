@@ -95,21 +95,11 @@ Dynamic session switching and multi-session support.
 ## 🚀 Medium Priority Features
 
 ### 4. Memory Integration
-**Status:** Planned  
+**Status:** Backburner  
 **Complexity:** Medium  
 **Impact:** Medium
 
-Leverage Clawdbot's `memory_search` for context-aware responses.
-
-**Benefits:**
-- Pull relevant past conversations
-- Personalized responses based on preferences
-- Cross-platform context ("What did I ask you on Telegram?")
-
-**Implementation:**
-- Pre-query memory search for relevant context
-- Inject context into conversation prompt
-- Expose as optional feature (privacy considerations)
+Clawdbot already uses its internal memory. Optional pre-query injection can be revisited later.
 
 ### 5. Cron & Reminder Integration
 **Status:** Planned  
@@ -276,7 +266,7 @@ Expand diagnostic data for troubleshooting.
 
 ### Phase 2: Advanced Features (v1.2.0)
 - [x] Sub-agent spawning
-- [ ] Memory integration
+  
 
 ### Phase 3: Optimization & Polish (v1.3.0)
 - [ ] Response caching
@@ -290,6 +280,7 @@ Expand diagnostic data for troubleshooting.
 - [ ] Voice profiles
 - [ ] Advanced observability
 - [ ] Session management expansions
+- [ ] Memory search injection
 
 ## Contributing
 
