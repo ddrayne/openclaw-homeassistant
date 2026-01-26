@@ -246,7 +246,7 @@ Expand diagnostic data for troubleshooting.
 - Voice activity detection integration
 - Custom wake word support
 - Proactive notifications based on memory/context
-- Integration with HA's LLM conversation API
+- Integration with HA's LLM conversation API (backburner)
 - Voice profile switching (per-user sessions)
 
 ### Edge Cases
