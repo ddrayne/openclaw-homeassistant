@@ -102,7 +102,7 @@ Dynamic session switching and multi-session support.
 Clawdbot already uses its internal memory. Optional pre-query injection can be revisited later.
 
 ### 5. Cron & Reminder Integration
-**Status:** Planned  
+**Status:** Partial  
 **Complexity:** Medium  
 **Impact:** High
 
@@ -114,7 +114,11 @@ Integrate with gateway's cron system for scheduled tasks.
 - Integration with HA automations
 - "Remind me to check the oven in 20 minutes"
 
-**Implementation:**
+**Current:**
+- `clawd.cron_add`, `clawd.cron_remove`, `clawd.cron_run` services
+- Event-first completion hooks for automations
+
+**Planned:**
 - `clawd.schedule_reminder` service
 - Parse natural language time expressions
 - Fire HA events on reminder trigger
@@ -275,7 +279,7 @@ Expand diagnostic data for troubleshooting.
 - [ ] Enhanced diagnostics
 
 ### Phase 4: Future Features (v2.0.0)
-- [ ] Cron integration
+- [x] Cron integration (services)
 - [ ] Proactive notifications
 - [ ] Voice profiles
 - [ ] Advanced observability

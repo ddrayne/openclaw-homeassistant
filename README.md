@@ -293,6 +293,20 @@ trigger:
     event_type: clawd_task_complete
 ```
 
+### Cron Services
+
+Schedule and manage cron jobs on the Gateway.
+
+- Service: `clawd.cron_add`
+  - Fields: `schedule`, `text`, `context_messages` (optional), `entry_id` (optional)
+  - Event: `clawd_cron_added` with `job_id`, `schedule`, `text`
+- Service: `clawd.cron_remove`
+  - Fields: `job_id`, `entry_id` (optional)
+  - Event: `clawd_cron_removed` with `job_id`
+- Service: `clawd.cron_run`
+  - Fields: `job_id`, `mode` (optional, `now`), `entry_id` (optional)
+  - Event: `clawd_cron_run` with `job_id`, `executed`, `response`
+
 ### Session Keys
 
 The **Session Key** setting allows you to route Home Assistant conversations to specific Clawdbot sessions:

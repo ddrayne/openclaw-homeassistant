@@ -42,3 +42,51 @@ spawn_task:
       name: Timeout Seconds
       description: Optional execution timeout for the spawned task.
       example: 300
+cron_add:
+  name: Cron Add
+  description: Add a scheduled cron job to the Gateway.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional entry ID to target. When omitted, adds for all entries.
+      example: "abcd1234efgh5678"
+    schedule:
+      name: Schedule
+      description: Cron expression or macro (for example, "@daily").
+      example: "0 9 * * *"
+    text:
+      name: Text
+      description: Task text to run on schedule.
+      example: "Daily morning briefing: weather, calendar, top news"
+    context_messages:
+      name: Context Messages
+      description: Optional number of previous messages to include as context (0-10).
+      example: 3
+cron_remove:
+  name: Cron Remove
+  description: Remove a scheduled cron job from the Gateway.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional entry ID to target. When omitted, removes for all entries.
+      example: "abcd1234efgh5678"
+    job_id:
+      name: Job ID
+      description: Cron job ID to remove.
+      example: "cron-xyz789"
+cron_run:
+  name: Cron Run
+  description: Trigger a cron job immediately.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional entry ID to target. When omitted, runs for all entries.
+      example: "abcd1234efgh5678"
+    job_id:
+      name: Job ID
+      description: Cron job ID to run.
+      example: "cron-xyz789"
+    mode:
+      name: Mode
+      description: Run mode (currently only "now").
+      example: "now"

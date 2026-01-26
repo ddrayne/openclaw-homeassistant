@@ -27,6 +27,9 @@ from .const import (
     DEFAULT_TTS_MAX_CHARS,
     DEFAULT_USE_SSL,
     DOMAIN,
+    EVENT_CRON_ADDED,
+    EVENT_CRON_REMOVED,
+    EVENT_CRON_RUN,
     EVENT_TASK_COMPLETE,
 )
 from .gateway_client import ClawdGatewayClient
@@ -37,6 +40,9 @@ PLATFORMS: list[Platform] = [Platform.CONVERSATION, Platform.SENSOR]
 SERVICE_RECONNECT = "reconnect"
 SERVICE_SET_SESSION = "set_session"
 SERVICE_SPAWN_TASK = "spawn_task"
+SERVICE_CRON_ADD = "cron_add"
+SERVICE_CRON_REMOVE = "cron_remove"
+SERVICE_CRON_RUN = "cron_run"
 _SERVICE_REGISTERED = "_service_registered"
 _RECONNECT_SCHEMA = vol.Schema({vol.Optional("entry_id"): str})
 _SESSION_SCHEMA = vol.Schema(
@@ -51,6 +57,24 @@ _SPAWN_SCHEMA = vol.Schema(
         vol.Optional("label"): str,
         vol.Optional("cleanup", default="delete"): vol.In(["delete", "keep"]),
         vol.Optional("timeout_seconds"): vol.All(int, vol.Range(min=1, max=3600)),
+        vol.Optional("entry_id"): str,
+    }
+)
+_CRON_ADD_SCHEMA = vol.Schema(
+    {
+        vol.Required("schedule"): vol.All(str, vol.Length(min=1)),
+        vol.Required("text"): vol.All(str, vol.Length(min=1)),
+        vol.Optional("context_messages"): vol.All(int, vol.Range(min=0, max=10)),
+        vol.Optional("entry_id"): str,
+    }
+)
+_CRON_REMOVE_SCHEMA = vol.Schema(
+    {vol.Required("job_id"): vol.All(str, vol.Length(min=1)), vol.Optional("entry_id"): str}
+)
+_CRON_RUN_SCHEMA = vol.Schema(
+    {
+        vol.Required("job_id"): vol.All(str, vol.Length(min=1)),
+        vol.Optional("mode", default="now"): vol.In(["now"]),
         vol.Optional("entry_id"): str,
     }
 )
@@ -108,6 +132,23 @@ async def _async_request_json(
         raise RuntimeError(payload.get("error", "Gateway request failed"))
 
     return payload
+
+
+async def _async_iter_target_entries(
+    hass: HomeAssistant, entry_id: str | None
+) -> list[ConfigEntry]:
+    """Resolve target config entries."""
+    if entry_id:
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None:
+            _LOGGER.warning("Requested entry not found: %s", entry_id)
+            return []
+        return [entry]
+    return [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.entry_id in hass.data.get(DOMAIN, {})
+    ]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -376,6 +417,126 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             SERVICE_SPAWN_TASK,
             _async_handle_spawn_task,
             schema=_SPAWN_SCHEMA,
+        )
+
+        async def _async_handle_cron_add(call) -> None:
+            entry_id = call.data.get("entry_id")
+            schedule = call.data["schedule"]
+            text = call.data["text"]
+            context_messages = call.data.get("context_messages")
+
+            entries = await _async_iter_target_entries(hass, entry_id)
+            for target_entry in entries:
+                try:
+                    payload = await _async_request_json(
+                        hass,
+                        target_entry,
+                        "POST",
+                        "cron/add",
+                        json_body={
+                            "schedule": schedule,
+                            "text": text,
+                            **(
+                                {"contextMessages": context_messages}
+                                if context_messages is not None
+                                else {}
+                            ),
+                        },
+                    )
+                except Exception as err:  # pylint: disable=broad-except
+                    _LOGGER.warning(
+                        "Failed to add cron job for %s: %s",
+                        target_entry.entry_id,
+                        err,
+                    )
+                    continue
+
+                payload = payload.get("payload", payload)
+                hass.bus.async_fire(
+                    EVENT_CRON_ADDED,
+                    {
+                        "job_id": payload.get("jobId"),
+                        "schedule": schedule,
+                        "text": text,
+                    },
+                )
+
+        async def _async_handle_cron_remove(call) -> None:
+            entry_id = call.data.get("entry_id")
+            job_id = call.data["job_id"]
+
+            entries = await _async_iter_target_entries(hass, entry_id)
+            for target_entry in entries:
+                try:
+                    await _async_request_json(
+                        hass,
+                        target_entry,
+                        "DELETE",
+                        f"cron/{job_id}",
+                    )
+                except Exception as err:  # pylint: disable=broad-except
+                    _LOGGER.warning(
+                        "Failed to remove cron job for %s: %s",
+                        target_entry.entry_id,
+                        err,
+                    )
+                    continue
+
+                hass.bus.async_fire(
+                    EVENT_CRON_REMOVED,
+                    {"job_id": job_id},
+                )
+
+        async def _async_handle_cron_run(call) -> None:
+            entry_id = call.data.get("entry_id")
+            job_id = call.data["job_id"]
+            mode = call.data.get("mode", "now")
+
+            entries = await _async_iter_target_entries(hass, entry_id)
+            for target_entry in entries:
+                try:
+                    payload = await _async_request_json(
+                        hass,
+                        target_entry,
+                        "POST",
+                        f"cron/{job_id}/run",
+                        json_body={"mode": mode},
+                    )
+                except Exception as err:  # pylint: disable=broad-except
+                    _LOGGER.warning(
+                        "Failed to run cron job for %s: %s",
+                        target_entry.entry_id,
+                        err,
+                    )
+                    continue
+
+                payload = payload.get("payload", payload)
+                hass.bus.async_fire(
+                    EVENT_CRON_RUN,
+                    {
+                        "job_id": job_id,
+                        "executed": payload.get("executed"),
+                        "response": payload.get("response"),
+                    },
+                )
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CRON_ADD,
+            _async_handle_cron_add,
+            schema=_CRON_ADD_SCHEMA,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CRON_REMOVE,
+            _async_handle_cron_remove,
+            schema=_CRON_REMOVE_SCHEMA,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CRON_RUN,
+            _async_handle_cron_run,
+            schema=_CRON_RUN_SCHEMA,
         )
         hass.data[DOMAIN][_SERVICE_REGISTERED] = True
 

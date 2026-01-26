@@ -25,6 +25,9 @@ CONF_THINKING = "thinking"
 CONF_STRIP_EMOJIS = "strip_emojis"
 CONF_TTS_MAX_CHARS = "tts_max_chars"
 EVENT_TASK_COMPLETE = "clawd_task_complete"
+EVENT_CRON_ADDED = "clawd_cron_added"
+EVENT_CRON_REMOVED = "clawd_cron_removed"
+EVENT_CRON_RUN = "clawd_cron_run"
 
 # Connection states
 STATE_CONNECTED = "connected"
