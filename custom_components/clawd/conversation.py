@@ -129,8 +129,6 @@ class ClawdConversationEntity(conversation.ConversationEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if isinstance(self._gateway_client.fatal_error, GatewayAuthenticationError):
-            return False
         return self._gateway_client.connected
 
     @property
