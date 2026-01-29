@@ -60,6 +60,9 @@ class GatewayProtocol:
         # Event handlers
         self._event_handlers: dict[str, list[Callable]] = {}
 
+        # Fatal error that stopped the connection loop (auth / protocol)
+        self._fatal_error: Exception | None = None
+
         # Build WebSocket URI
         protocol = "wss" if use_ssl else "ws"
         self._uri = f"{protocol}://{host}:{port}"
@@ -145,14 +148,15 @@ class GatewayProtocol:
                         )
                         await self._receive_task
 
-                    except (
-                        GatewayAuthenticationError,
-                        ProtocolError,
-                    ) as err:
-                        _LOGGER.error("Gateway error: %s", err)
+                    except GatewayAuthenticationError as err:
+                        self._fatal_error = err
                         _LOGGER.error(
-                            "Fatal error - authentication or protocol "
-                            "issue. Stopping connection attempts."
+                            "Gateway authentication failed. Check that the "
+                            "token in Settings > Devices & Services > Clawd "
+                            "> Configure matches your gateway token "
+                            "(clawdbot doctor --generate-gateway-token). "
+                            "Detail: %s",
+                            err,
                         )
                         # Return instead of raise: re-raising inside
                         # the websockets context manager allows
@@ -160,6 +164,16 @@ class GatewayProtocol:
                         # ConnectionClosedError, which the outer loop
                         # treats as transient, creating an infinite
                         # retry loop.
+                        return
+
+                    except ProtocolError as err:
+                        self._fatal_error = err
+                        _LOGGER.error(
+                            "Gateway protocol error - the integration may "
+                            "be incompatible with this gateway version. "
+                            "Detail: %s",
+                            err,
+                        )
                         return
 
                     finally:
@@ -183,12 +197,11 @@ class GatewayProtocol:
                 _LOGGER.debug("Connection loop cancelled")
                 break
 
-            except (GatewayAuthenticationError, ProtocolError):
+            except (GatewayAuthenticationError, ProtocolError) as err:
                 # Don't retry auth/protocol errors - these require user intervention
-                _LOGGER.error(
-                    "Fatal error - authentication or protocol issue. "
-                    "Stopping connection attempts."
-                )
+                if not self._fatal_error:
+                    self._fatal_error = err
+                    _LOGGER.error("Gateway connection stopped: %s", err)
                 break
 
             except ConnectionClosedError as err:

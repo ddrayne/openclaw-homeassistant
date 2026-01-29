@@ -139,7 +139,19 @@ class ClawdGatewayClient:
                 self._gateway._connected_event.wait(), timeout=5.0
             )
         except asyncio.TimeoutError:
-            _LOGGER.warning("Connection timeout - Gateway may not be reachable")
+            if self._gateway._fatal_error:
+                # Auth/protocol failure already logged with details by gateway
+                _LOGGER.debug(
+                    "Connection failed due to: %s",
+                    self._gateway._fatal_error,
+                )
+            else:
+                _LOGGER.warning(
+                    "Connection timeout - Gateway at %s:%s may not be "
+                    "reachable. Check that the gateway is running",
+                    self._gateway._host,
+                    self._gateway._port,
+                )
 
     async def disconnect(self) -> None:
         """Disconnect from Gateway."""
