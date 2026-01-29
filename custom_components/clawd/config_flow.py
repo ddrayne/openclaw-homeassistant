@@ -107,9 +107,6 @@ def _build_session_selector(
     session_keys: list[str], default_value: str
 ) -> selector.SelectSelector | type[str]:
     """Build a session selector when sessions are available."""
-    if not session_keys:
-        return str
-
     ordered: list[str] = []
     for key in (default_value, DEFAULT_SESSION_KEY, *session_keys):
         if key and key not in ordered:

@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from aiohttp import ContentTypeError
 
 from .const import (
     CONF_SESSION_KEY,
@@ -52,7 +53,12 @@ async def _async_fetch_session_status(
             raise UpdateFailed(
                 f"Session status request failed with status {resp.status}"
             )
-        payload = await resp.json()
+        try:
+            payload = await resp.json()
+        except ContentTypeError as err:
+            raise UpdateFailed(
+                f"Session status response was not JSON ({resp.content_type})"
+            ) from err
 
     if not payload.get("ok", True):
         raise UpdateFailed(payload.get("error", "Session status request failed"))
