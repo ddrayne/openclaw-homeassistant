@@ -52,6 +52,17 @@ This integration lets you access your **entire OpenClaw agent** - with all its s
 
 **Note**: OpenClaw runs on macOS, Windows, and Linux. You'll need to have OpenClaw installed and configured with your desired AI model (Claude, GPT, or local) and any service integrations you want to use before connecting to Home Assistant.
 
+## Upgrading from Clawd (v1.2.x)
+
+v1.3.0 renames the integration domain from `clawd` to `openclaw`. This is a breaking change that requires a manual migration:
+
+1. **HACS**: Remove the old "Clawd Voice Assistant" repository from HACS, then re-add `ddrayne/openclaw-homeassistant` as a custom repository and download it
+2. **Integration**: Remove the old integration from **Settings > Devices & Services > Clawd**, then re-add it as "OpenClaw Voice Assistant" with the same connection details
+3. **Delete old files**: Remove the `custom_components/clawd/` directory from your HA config if it wasn't cleaned up automatically
+4. **Restart** Home Assistant
+
+Your Gateway token and connection settings stay the same — only the HA integration needs to be re-added.
+
 ## Installation
 
 ### HACS (Recommended)
