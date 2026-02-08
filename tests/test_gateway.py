@@ -261,3 +261,20 @@ class TestHandshake:
         await protocol._handshake()
 
         assert protocol.presence == {}
+
+    @pytest.mark.asyncio
+    async def test_presence_list_normalized_to_dict(self) -> None:
+        def response(sent):
+            return {
+                "type": "res",
+                "id": sent[-1]["id"],
+                "ok": True,
+                "payload": {"snapshot": {"presence": ["client-a", "client-b"]}},
+            }
+
+        protocol = GatewayProtocol("localhost", 1, None)
+        protocol._websocket = DummyWebSocket([response])
+
+        await protocol._handshake()
+
+        assert protocol.presence == {"clients": ["client-a", "client-b"]}

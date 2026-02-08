@@ -450,6 +450,8 @@ class OpenClawGatewayClient:
         """Handle presence event and update state."""
         payload = event.get("payload", {})
         if payload:
+            if isinstance(payload, list):
+                payload = {"clients": payload}
             self._gateway._presence = payload
 
     async def health(self) -> dict[str, Any]:

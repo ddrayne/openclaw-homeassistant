@@ -67,8 +67,10 @@ Clawd has been renamed to **OpenClaw** (via MoltBot). This integration now uses 
    - Open **HACS > Integrations**
    - Find "Clawd Voice Assistant" and **remove** it (uninstall + remove from custom repositories)
 
-3. **Delete leftover files**
-   - Using SSH, the File Editor add-on, or Samba, delete the `custom_components/clawd/` directory if it still exists
+3. **Delete the old `clawd` directory** (important!)
+   - Using SSH, the File Editor add-on, or Samba, **manually delete** the `custom_components/clawd/` directory
+   - HACS does **not** remove this automatically because the repository name changed
+   - If you skip this step, Home Assistant will load both the old `clawd` and new `openclaw` integrations, causing errors in the log
 
 4. **Restart Home Assistant**
 

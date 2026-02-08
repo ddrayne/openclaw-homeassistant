@@ -75,7 +75,7 @@ async def async_setup_entry(
     async_add_entities([
         OpenClawUptimeSensor(status_coordinator, entry.entry_id, client),
         OpenClawConnectedClientsSensor(entry.entry_id, client),
-        OpenClawHealthSensor(health_coordinator, entry.entry_id),
+        OpenClawHealthSensor(health_coordinator, entry.entry_id, client),
     ])
 
 
@@ -185,8 +185,10 @@ class OpenClawHealthSensor(CoordinatorEntity, SensorEntity):
         self,
         coordinator: DataUpdateCoordinator,
         entry_id: str,
+        client: OpenClawGatewayClient,
     ) -> None:
         super().__init__(coordinator)
+        self._client = client
         self._entry_id = entry_id
         self._attr_name = "OpenClaw Gateway Health"
         self._attr_unique_id = f"{entry_id}_gateway_health"
@@ -203,7 +205,12 @@ class OpenClawHealthSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> str | None:
         data = self.coordinator.data or {}
-        return data.get("status")
+        status = data.get("status")
+        if status is not None:
+            return status
+        # Fallback to connect snapshot
+        snapshot = self._client.connect_snapshot.get("snapshot", {})
+        return snapshot.get("health", {}).get("status")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

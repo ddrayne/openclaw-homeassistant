@@ -225,21 +225,37 @@ class TestOpenClawConnectedClientsSensor:
 
 class TestOpenClawHealthSensor:
     def test_native_value(self) -> None:
+        client = _make_client()
         coordinator = _make_coordinator({"status": "ok"})
-        sensor = OpenClawHealthSensor(coordinator, "test_entry")
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
         assert sensor.native_value == "ok"
 
     def test_native_value_none_when_no_data(self) -> None:
+        client = _make_client()
         coordinator = _make_coordinator(None)
-        sensor = OpenClawHealthSensor(coordinator, "test_entry")
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
         assert sensor.native_value is None
 
     def test_native_value_none_when_status_missing(self) -> None:
+        client = _make_client()
         coordinator = _make_coordinator({"version": "1.0"})
-        sensor = OpenClawHealthSensor(coordinator, "test_entry")
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
         assert sensor.native_value is None
 
+    def test_native_value_fallback_to_snapshot(self) -> None:
+        client = _make_client(snapshot={"snapshot": {"health": {"status": "ok"}}})
+        coordinator = _make_coordinator(None)
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
+        assert sensor.native_value == "ok"
+
+    def test_native_value_coordinator_takes_precedence(self) -> None:
+        client = _make_client(snapshot={"snapshot": {"health": {"status": "degraded"}}})
+        coordinator = _make_coordinator({"status": "ok"})
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
+        assert sensor.native_value == "ok"
+
     def test_extra_state_attributes(self) -> None:
+        client = _make_client()
         coordinator = _make_coordinator({
             "status": "ok",
             "version": "2.1.0",
@@ -247,7 +263,7 @@ class TestOpenClawHealthSensor:
             "memoryUsage": 128,
             "cpuUsage": 0.5,
         })
-        sensor = OpenClawHealthSensor(coordinator, "test_entry")
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
         attrs = sensor.extra_state_attributes
         assert attrs["version"] == "2.1.0"
         assert attrs["uptimeMs"] == 50000
@@ -255,24 +271,28 @@ class TestOpenClawHealthSensor:
         assert attrs["cpuUsage"] == 0.5
 
     def test_extra_state_attributes_omits_missing(self) -> None:
+        client = _make_client()
         coordinator = _make_coordinator({"status": "ok"})
-        sensor = OpenClawHealthSensor(coordinator, "test_entry")
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
         attrs = sensor.extra_state_attributes
         assert attrs == {}
 
     def test_extra_state_attributes_empty_data(self) -> None:
+        client = _make_client()
         coordinator = _make_coordinator(None)
-        sensor = OpenClawHealthSensor(coordinator, "test_entry")
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
         attrs = sensor.extra_state_attributes
         assert attrs == {}
 
     def test_unique_id(self) -> None:
+        client = _make_client()
         coordinator = _make_coordinator(None)
-        sensor = OpenClawHealthSensor(coordinator, "test_entry")
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
         assert sensor._attr_unique_id == "test_entry_gateway_health"
 
     def test_device_info(self) -> None:
+        client = _make_client()
         coordinator = _make_coordinator(None)
-        sensor = OpenClawHealthSensor(coordinator, "test_entry")
+        sensor = OpenClawHealthSensor(coordinator, "test_entry", client)
         info = sensor.device_info
         assert ("openclaw", "test_entry") in info["identifiers"]

@@ -345,11 +345,14 @@ class GatewayProtocol:
                 raise ProtocolError(f"Connection failed: {error_msg}")
 
             self._connect_snapshot = response.get("payload", {})
-            self._presence = (
+            presence = (
                 self._connect_snapshot
                 .get("snapshot", {})
                 .get("presence", {})
             )
+            if isinstance(presence, list):
+                presence = {"clients": presence}
+            self._presence = presence
             _LOGGER.debug("Handshake completed successfully")
 
         except asyncio.TimeoutError as err:
