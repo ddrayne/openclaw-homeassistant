@@ -6,6 +6,8 @@ import time
 import uuid
 from typing import Any, AsyncIterator
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from .exceptions import (
     AgentExecutionError,
     GatewayAuthenticationError,
@@ -119,9 +121,10 @@ class OpenClawGatewayClient:
         session_key: str = "main",
         model: str | None = None,
         thinking: str | None = None,
+        device_key: Ed25519PrivateKey | None = None,
     ) -> None:
         """Initialize the Gateway client."""
-        self._gateway = GatewayProtocol(host, port, token, use_ssl)
+        self._gateway = GatewayProtocol(host, port, token, use_ssl, device_key=device_key)
         self._timeout = timeout
         self._session_key = session_key
         self._model = model

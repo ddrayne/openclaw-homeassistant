@@ -26,6 +26,7 @@ sys.modules.setdefault("custom_components.openclaw", ModuleType("custom_componen
 
 _const = _load_module("custom_components.openclaw.const", _BASE / "const.py")
 _exceptions = _load_module("custom_components.openclaw.exceptions", _BASE / "exceptions.py")
+_device_auth = _load_module("custom_components.openclaw.device_auth", _BASE / "device_auth.py")
 _gateway = _load_module("custom_components.openclaw.gateway", _BASE / "gateway.py")
 
 GatewayAuthenticationError = _exceptions.GatewayAuthenticationError
@@ -46,11 +47,12 @@ class DummyWebSocket:
         self._sent_event.set()
 
     async def recv(self) -> str:
-        if not self.sent:
-            await self._sent_event.wait()
         if self._index >= len(self._responses):
             raise AssertionError("No more responses configured")
         item = self._responses[self._index]
+        # Only wait for a client send if the response needs it (callable)
+        if callable(item) and not self.sent:
+            await self._sent_event.wait()
         self._index += 1
         if callable(item):
             item = item(self.sent)
@@ -278,3 +280,118 @@ class TestHandshake:
         await protocol._handshake()
 
         assert protocol.presence == {"clients": ["client-a", "client-b"]}
+
+
+class TestChallengeHandshake:
+    """Tests for the connect.challenge + device auth flow (2026.2.13+)."""
+
+    @pytest.mark.asyncio
+    async def test_challenge_triggers_device_auth(self) -> None:
+        key = _device_auth.generate_keypair()
+
+        challenge = {
+            "type": "event",
+            "event": "connect.challenge",
+            "payload": {"nonce": "test-uuid-nonce", "ts": 1700000000},
+        }
+
+        def ok_response(sent):
+            return {
+                "type": "res",
+                "id": sent[-1]["id"],
+                "ok": True,
+                "payload": {},
+            }
+
+        protocol = GatewayProtocol("localhost", 1, "tok", device_key=key)
+        protocol._websocket = DummyWebSocket([challenge, ok_response])
+
+        await protocol._handshake()
+
+        connect_params = protocol._websocket.sent[0]["params"]
+        assert connect_params["role"] == "operator"
+        assert connect_params["scopes"] == ["operator.read", "operator.write"]
+        assert "device" in connect_params
+        device = connect_params["device"]
+        assert device["nonce"] == "test-uuid-nonce"
+        assert len(device["id"]) == 64
+        assert "publicKey" in device
+        assert "signature" in device
+        assert isinstance(device["signedAt"], int)
+
+    @pytest.mark.asyncio
+    async def test_no_challenge_falls_back_to_legacy(self) -> None:
+        """When gateway doesn't send challenge, handshake works without device auth."""
+        key = _device_auth.generate_keypair()
+
+        def ok_response(sent):
+            return {
+                "type": "res",
+                "id": sent[-1]["id"],
+                "ok": True,
+                "payload": {},
+            }
+
+        protocol = GatewayProtocol("localhost", 1, "tok", device_key=key)
+        # First message is a non-challenge event (simulates old gateway)
+        protocol._websocket = DummyWebSocket(
+            [{"type": "event", "event": "agent"}, ok_response]
+        )
+
+        await protocol._handshake()
+
+        connect_params = protocol._websocket.sent[0]["params"]
+        assert "device" not in connect_params
+        assert "role" not in connect_params
+        assert "scopes" not in connect_params
+        assert connect_params["auth"] == {"token": "tok"}
+
+    @pytest.mark.asyncio
+    async def test_challenge_without_device_key_skips_device_auth(self) -> None:
+        """When challenge arrives but no device key, proceed without device auth."""
+        challenge = {
+            "type": "event",
+            "event": "connect.challenge",
+            "payload": {"nonce": "test-nonce", "ts": 1700000000},
+        }
+
+        def ok_response(sent):
+            return {
+                "type": "res",
+                "id": sent[-1]["id"],
+                "ok": True,
+                "payload": {},
+            }
+
+        protocol = GatewayProtocol("localhost", 1, "tok")  # no device_key
+        protocol._websocket = DummyWebSocket([challenge, ok_response])
+
+        await protocol._handshake()
+
+        connect_params = protocol._websocket.sent[0]["params"]
+        assert "device" not in connect_params
+        assert connect_params["auth"] == {"token": "tok"}
+
+    @pytest.mark.asyncio
+    async def test_challenge_device_nonce_error_raises_auth_error(self) -> None:
+        key = _device_auth.generate_keypair()
+
+        challenge = {
+            "type": "event",
+            "event": "connect.challenge",
+            "payload": {"nonce": "test-nonce", "ts": 1700000000},
+        }
+
+        def error_response(sent):
+            return {
+                "type": "res",
+                "id": sent[-1]["id"],
+                "ok": False,
+                "error": "device nonce mismatch",
+            }
+
+        protocol = GatewayProtocol("localhost", 1, "tok", device_key=key)
+        protocol._websocket = DummyWebSocket([challenge, error_response])
+
+        with pytest.raises(GatewayAuthenticationError, match="device"):
+            await protocol._handshake()

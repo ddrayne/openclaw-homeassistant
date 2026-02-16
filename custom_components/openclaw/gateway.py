@@ -10,15 +10,21 @@ from typing import Any, Callable
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError, InvalidStatus
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from .const import (
+    CHALLENGE_TIMEOUT,
     CLIENT_DISPLAY_NAME,
     CLIENT_ID,
     CLIENT_MODE,
     CLIENT_PLATFORM,
     CLIENT_VERSION,
+    DEVICE_ROLE,
+    DEVICE_SCOPES,
     PROTOCOL_MAX_VERSION,
     PROTOCOL_MIN_VERSION,
 )
+from .device_auth import build_device_auth_dict
 from .exceptions import (
     GatewayAuthenticationError,
     GatewayConnectionError,
@@ -37,12 +43,14 @@ class GatewayProtocol:
         port: int,
         token: str | None,
         use_ssl: bool = False,
+        device_key: Ed25519PrivateKey | None = None,
     ) -> None:
         """Initialize the Gateway protocol client."""
         self._host = host
         self._port = port
         self._token = token
         self._use_ssl = use_ssl
+        self._device_key = device_key
 
         # Connection state
         self._websocket: Any | None = None
@@ -273,11 +281,50 @@ class GatewayProtocol:
                 await asyncio.sleep(5)  # Wait before reconnecting
 
     async def _handshake(self) -> None:
-        """Perform connection handshake with authentication."""
+        """Perform connection handshake with authentication.
+
+        Supports both legacy (no challenge) and new (challenge + device auth)
+        flows for backwards compatibility with gateways older than 2026.2.13.
+        """
         if not self._websocket:
             raise GatewayConnectionError("WebSocket not connected")
 
-        # Build connect request
+        # Step 1: Wait for optional connect.challenge event from server
+        nonce: str | None = None
+        first_message: dict[str, Any] | None = None
+
+        try:
+            challenge_text = await asyncio.wait_for(
+                self._websocket.recv(), timeout=CHALLENGE_TIMEOUT
+            )
+            challenge = json.loads(challenge_text)
+            if (
+                challenge.get("type") == "event"
+                and challenge.get("event") == "connect.challenge"
+            ):
+                nonce = challenge.get("payload", {}).get("nonce")
+                _LOGGER.debug(
+                    "Received connect.challenge with nonce: %s",
+                    nonce[:8] if nonce else "none",
+                )
+            else:
+                _LOGGER.debug(
+                    "First message was not connect.challenge (%s/%s), "
+                    "using legacy handshake",
+                    challenge.get("type"),
+                    challenge.get("event", ""),
+                )
+                first_message = challenge
+        except asyncio.TimeoutError:
+            _LOGGER.debug(
+                "No connect.challenge received within %.1fs, "
+                "using legacy handshake",
+                CHALLENGE_TIMEOUT,
+            )
+        except json.JSONDecodeError:
+            _LOGGER.debug("Non-JSON first message, using legacy handshake")
+
+        # Step 2: Build connect request
         connect_params: dict[str, Any] = {
             "minProtocol": PROTOCOL_MIN_VERSION,
             "maxProtocol": PROTOCOL_MAX_VERSION,
@@ -288,14 +335,32 @@ class GatewayProtocol:
                 "platform": CLIENT_PLATFORM,
                 "mode": CLIENT_MODE,
             },
-            "caps": [],  # No special capabilities
+            "caps": [],
             "locale": "en-US",
             "userAgent": f"{CLIENT_DISPLAY_NAME}/{CLIENT_VERSION}",
         }
 
-        # Add authentication if token is provided
         if self._token:
             connect_params["auth"] = {"token": self._token}
+
+        # Add device auth if we received a challenge nonce
+        if nonce and self._device_key:
+            connect_params["role"] = DEVICE_ROLE
+            connect_params["scopes"] = list(DEVICE_SCOPES)
+            connect_params["device"] = build_device_auth_dict(
+                key=self._device_key,
+                client_id=CLIENT_ID,
+                client_mode=CLIENT_MODE,
+                role=DEVICE_ROLE,
+                scopes=DEVICE_SCOPES,
+                token=self._token or "",
+                nonce=nonce,
+            )
+        elif nonce and not self._device_key:
+            _LOGGER.warning(
+                "Gateway sent connect.challenge but no device key is "
+                "configured; device auth will be skipped"
+            )
 
         request_id = str(uuid.uuid4())
         connect_request = {
@@ -308,13 +373,18 @@ class GatewayProtocol:
         _LOGGER.debug("Sending connect request")
         await self._websocket.send(json.dumps(connect_request))
 
-        # Wait for response (skip any events that arrive first)
+        # Step 3: Wait for response
         try:
             while True:
-                response_text = await asyncio.wait_for(
-                    self._websocket.recv(), timeout=10.0
-                )
-                response = json.loads(response_text)
+                # Process stored first_message before reading from socket
+                if first_message is not None:
+                    response = first_message
+                    first_message = None
+                else:
+                    response_text = await asyncio.wait_for(
+                        self._websocket.recv(), timeout=10.0
+                    )
+                    response = json.loads(response_text)
 
                 if response.get("type") == "event":
                     _LOGGER.debug(
@@ -341,6 +411,10 @@ class GatewayProtocol:
                 if "auth" in error_str.lower() or "token" in error_str.lower():
                     raise GatewayAuthenticationError(
                         f"Authentication failed: {error_msg}"
+                    )
+                if "nonce" in error_str.lower() or "device" in error_str.lower():
+                    raise GatewayAuthenticationError(
+                        f"Device authentication failed: {error_msg}"
                     )
                 raise ProtocolError(f"Connection failed: {error_msg}")
 

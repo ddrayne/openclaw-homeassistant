@@ -40,3 +40,8 @@ CLIENT_DISPLAY_NAME = "Home Assistant OpenClaw"
 CLIENT_VERSION = "1.0.0"
 CLIENT_PLATFORM = "python"
 CLIENT_MODE = "backend"
+
+# Device authentication (OpenClaw 2026.2.13+)
+DEVICE_ROLE = "operator"
+DEVICE_SCOPES = ["operator.read", "operator.write"]
+CHALLENGE_TIMEOUT = 2.0  # seconds to wait for connect.challenge before fallback

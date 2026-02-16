@@ -28,6 +28,7 @@ from .const import (
     DEFAULT_USE_SSL,
     DOMAIN,
 )
+from .device_auth import async_load_or_create_keypair
 from .exceptions import (
     GatewayAuthenticationError,
     GatewayConnectionError,
@@ -78,6 +79,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     options = entry.options
 
+    # Load or generate persistent device keypair for Ed25519 auth
+    device_key = await async_load_or_create_keypair(hass)
+
     # Create Gateway client with config from entry.data
     gateway_client = OpenClawGatewayClient(
         host=entry.data[CONF_HOST],
@@ -97,6 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         thinking=options.get(
             CONF_THINKING, entry.data.get(CONF_THINKING, DEFAULT_THINKING)
         ),
+        device_key=device_key,
     )
 
     # Connect to Gateway
