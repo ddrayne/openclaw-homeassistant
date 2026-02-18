@@ -79,10 +79,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     options = entry.options
 
     # Create Gateway client with config from entry.data
+    token = options.get(CONF_TOKEN) or entry.data.get(CONF_TOKEN)
+
     gateway_client = OpenClawGatewayClient(
+        hass=hass,
         host=entry.data[CONF_HOST],
         port=entry.data[CONF_PORT],
-        token=options.get(CONF_TOKEN, entry.data.get(CONF_TOKEN)),
+        token=token,
         use_ssl=options.get(
             CONF_USE_SSL, entry.data.get(CONF_USE_SSL, DEFAULT_USE_SSL)
         ),

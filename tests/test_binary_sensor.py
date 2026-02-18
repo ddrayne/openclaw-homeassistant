@@ -58,6 +58,7 @@ sys.modules.setdefault("custom_components.openclaw", ModuleType("custom_componen
 
 _const = _load_module("custom_components.openclaw.const", _BASE / "const.py")
 _exceptions = _load_module("custom_components.openclaw.exceptions", _BASE / "exceptions.py")
+_device_auth = _load_module("custom_components.openclaw.device_auth", _BASE / "device_auth.py")
 _gateway = _load_module("custom_components.openclaw.gateway", _BASE / "gateway.py")
 _gateway_client = _load_module(
     "custom_components.openclaw.gateway_client", _BASE / "gateway_client.py"
