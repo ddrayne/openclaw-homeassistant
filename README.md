@@ -26,7 +26,8 @@ This integration lets you access your **entire OpenClaw agent** - with all its s
 - **Direct WebSocket Connection**: Real-time, persistent connection to OpenClaw Gateway
 - **Smart TTS Processing**: Configurable emoji stripping for clean text-to-speech output
 - **Voice-Friendly Limits**: Optional TTS response trimming to keep speech concise
-- **Flexible Authentication**: Secure token-based auth with SSL/TLS support
+- **Flexible Authentication**: Secure token + device identity auth with SSL/TLS support
+- **Device Pairing**: One-time device approval with Ed25519 keypair, auto-approved for local connections
 - **Reliable Connection**: Keepalive pings, automatic reconnects, and graceful error handling
 - **Customizable Sessions**: Session selector in setup plus `openclaw.set_session` for fast switching
 - **Model & Thinking Overrides**: Per-request model and reasoning mode controls
@@ -120,10 +121,29 @@ This binds the Gateway to your local network interface, allowing connections fro
    - **Gateway Token**: Your authentication token (required)
    - **Use SSL**: Check this for `wss://` connections (recommended for remote connections)
    - **Agent Timeout**: Maximum time to wait for agent response in seconds (default: 30)
+5. Click **Submit**
+
+#### Device Approval
+
+When connecting for the first time, the integration registers a device identity with your OpenClaw Gateway using an Ed25519 keypair. Depending on your setup:
+
+- **Local connections** (OpenClaw on the same machine / localhost): The device is **auto-approved** — setup proceeds immediately.
+- **Remote connections** (different machines, containers on different IPs): You'll see a **"Device Approval Required"** step. Approve the device in OpenClaw, then click **Submit** to continue:
+
+  ```bash
+  # In the OpenClaw CLI, list pending devices and approve:
+  openclaw devices list
+  openclaw devices approve <device-id>
+  ```
+
+  Or approve via the OpenClaw Control UI.
+
+This is a **one-time step**. The device key is persisted in Home Assistant — future connections and restarts reuse the approved key automatically.
+
+6. Configure session and speech options:
    - **Session Key**: OpenClaw session to use (default: `main` - the standard direct-chat session)
    - **Strip emojis from TTS speech**: Remove emojis from spoken responses (default: enabled)
-
-5. Click **Submit**
+7. Click **Submit**
 
 ### Configuring Voice Assistant
 
@@ -192,6 +212,8 @@ Configure the integration with your Gateway's hostname/IP and enable SSL:
 - Use SSL: ✓ (enabled)
 - Gateway Token: Required
 
+On first connection, you'll need to approve the device in OpenClaw (one-time step). See [Device Approval](#device-approval) above.
+
 ### Option 2: SSH Tunnel
 
 Set up an SSH tunnel separately and connect via localhost:
@@ -206,6 +228,8 @@ Then configure the integration:
 - Port: `18789`
 - Gateway Token: Required
 
+**Note**: When using an SSH tunnel, the connection appears as localhost to OpenClaw, so device pairing is typically auto-approved.
+
 ## Troubleshooting
 
 ### Connection Errors
@@ -216,10 +240,20 @@ Then configure the integration:
 - Check firewall rules
 - For remote connections, ensure SSL is enabled if required
 
-**Authentication failed:**
-- Verify your token is correct
+**Authentication failed — invalid token:**
+- Verify your Gateway token is correct
 - Check Gateway token configuration: `echo $OPENCLAW_GATEWAY_TOKEN`
 - Generate a new token if needed: `openclaw doctor --generate-gateway-token`
+
+**Device approval required:**
+- This appears when connecting from a remote machine (not localhost) for the first time
+- Approve the device in OpenClaw: `openclaw devices approve <device-id>` or via the Control UI
+- Click **Submit** in Home Assistant after approving
+- This is a one-time step — the device key is persisted for future connections
+
+**Device pairing required (repair issue):**
+- If a previously approved device loses pairing (e.g., OpenClaw data reset), a repair issue appears
+- Re-approve the device in OpenClaw, then reload the integration
 
 **Response timeout:**
 - Agent execution is taking longer than the configured timeout (default: 30 seconds)
@@ -234,6 +268,18 @@ Home Assistant provides a diagnostics panel for the integration:
 
 - Go to **Settings** → **Devices & Services** → **OpenClaw** → **Diagnostics**
 - Includes connection status, health info, and redacted configuration
+
+### Debug Logging
+
+To enable debug logging for the integration, add this to your `configuration.yaml`:
+
+```yaml
+logger:
+  logs:
+    custom_components.openclaw: debug
+```
+
+**Note**: The logger name is `custom_components.openclaw` (not `openclaw-homeassistant`).
 
 ### Performance Issues
 
@@ -258,7 +304,10 @@ Home Assistant provides a diagnostics panel for the integration:
 
 ## Security
 
-- **Token storage**: Tokens are encrypted at rest by Home Assistant
+- **Two-factor authentication**: Connections use both a Gateway token and an Ed25519 device keypair for authentication
+- **Device identity**: Each Home Assistant instance registers a unique Ed25519 keypair with the Gateway, proving device identity on every connection
+- **Token storage**: Tokens and device keys are encrypted at rest by Home Assistant
+- **Pairing approval**: Remote devices require one-time approval in OpenClaw before they can operate (local connections are auto-approved)
 - **SSL/TLS**: Recommended for all remote connections
 - **SSH tunnels**: Can be used as an alternative to direct connections
 - **Non-SSL warning**: The integration warns when connecting to non-localhost without SSL
