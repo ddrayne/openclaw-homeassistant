@@ -8,5 +8,5 @@
   "requirements": ["websockets>=12.0"],
   "iot_class": "local_push",
   "diagnostics": true,
-  "version": "1.4.1-beta.5"
+  "version": "1.5.0-beta.1"
 }
