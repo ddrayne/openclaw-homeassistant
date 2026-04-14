@@ -1,5 +1,6 @@
 """Conversation entity for OpenClaw integration."""
 
+import dataclasses
 import logging
 import re
 from typing import Any, AsyncIterator
@@ -53,6 +54,29 @@ def trim_tts_text(text: str, max_chars: int) -> str:
     if max_chars <= 3:
         return text[:max_chars]
     return text[: max_chars - 3].rstrip() + "..."
+
+
+def response_expects_followup(text: str) -> bool:
+    """Return True if the response looks like it asks a follow-up question.
+
+    Keeps the satellite mic open so the user can reply without re-triggering
+    the wake word. We treat any "?" in the reply as a follow-up cue.
+    """
+    return "?" in (text or "")
+
+
+def _set_continue_conversation(
+    result: conversation.ConversationResult, value: bool
+) -> None:
+    """Best-effort set of continue_conversation on HA versions that support it.
+
+    Some HA versions expose ConversationResult as a frozen dataclass; tolerate
+    both the "attribute not supported" and "frozen instance" cases as no-ops.
+    """
+    try:
+        result.continue_conversation = value
+    except (AttributeError, dataclasses.FrozenInstanceError):
+        pass
 
 
 async def async_setup_entry(
@@ -167,10 +191,14 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
                 user_input, chat_log, response_text, intent_response
             )
 
-            return conversation.ConversationResult(
+            result = conversation.ConversationResult(
                 response=intent_response,
                 conversation_id=user_input.conversation_id,
             )
+            _set_continue_conversation(
+                result, response_expects_followup(response_text)
+            )
+            return result
 
         except GatewayAuthenticationError as err:
             _LOGGER.error("Gateway authentication error: %s", err)
@@ -224,14 +252,18 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             return None
 
         intent_response = intent.IntentResponse(language=user_input.language)
-        response_stream = self._stream_response(
-            user_input, chat_log, user_message, intent_response
-        )
-
         result = conversation.ConversationResult(
             response=intent_response,
             conversation_id=user_input.conversation_id,
         )
+        # Shared reference so _stream_response's finally block can mutate
+        # whichever object actually gets returned below — including the
+        # replacement built by the StreamingConversationResult fallback.
+        result_ref: list[conversation.ConversationResult] = [result]
+        response_stream = self._stream_response(
+            user_input, chat_log, user_message, intent_response, result_ref
+        )
+
         try:
             setattr(result, "response_stream", response_stream)
             return result
@@ -261,19 +293,23 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         ]
         for kwargs in init_attempts:
             try:
-                return streaming_cls(**kwargs)
+                streamed = streaming_cls(**kwargs)
             except TypeError:
                 continue
+            result_ref[0] = streamed
+            return streamed
 
         try:
-            return streaming_cls(
+            streamed = streaming_cls(
                 intent_response, user_input.conversation_id, response_stream
             )
         except TypeError:
             _LOGGER.debug(
                 "StreamingConversationResult signature not supported by this HA version"
             )
-        return None
+            return None
+        result_ref[0] = streamed
+        return streamed
 
     async def _stream_response(
         self,
@@ -281,6 +317,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         chat_log: conversation.ChatLog,
         user_message: str,
         intent_response: intent.IntentResponse,
+        result_ref: list[conversation.ConversationResult],
     ) -> AsyncIterator[str]:
         """Stream response chunks from the Gateway."""
         chunks: list[str] = []
@@ -336,6 +373,9 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             response_text = "".join(chunks)
             self._finalize_response(
                 user_input, chat_log, response_text, intent_response
+            )
+            _set_continue_conversation(
+                result_ref[0], response_expects_followup(response_text)
             )
 
     def _finalize_response(
