@@ -39,6 +39,14 @@ class AgentRun:
         if not output:
             return
 
+        if self._full_text and output.strip() in ("[]", "{}"):
+            _LOGGER.debug(
+                "Ignoring structural text update for %s: %s",
+                self.run_id,
+                output.strip(),
+            )
+            return
+
         # Gateway sends full text each time, only append what's new
         if output.startswith(self._full_text):
             # This is cumulative text, extract new portion
@@ -252,6 +260,7 @@ class OpenClawGatewayClient:
 
         agent_run = AgentRun(run_id, stream=stream)
         self._agent_runs[run_id] = agent_run
+        self._buffer_agent_payload(agent_run, payload)
         return agent_run
 
     async def send_agent_request(
@@ -388,6 +397,27 @@ class OpenClawGatewayClient:
             )
             raise AgentExecutionError(str(err)) from err
 
+    @staticmethod
+    def _buffer_agent_payload(agent_run: AgentRun, payload: dict[str, Any]) -> None:
+        """Buffer assistant text from a Gateway agent payload."""
+        data = payload.get("data", {})
+        if not isinstance(data, dict):
+            data = {}
+
+        output = payload.get("output")
+        if not output and "text" in data:
+            output = data.get("text")
+        if not output:
+            result = payload.get("result")
+            if isinstance(result, dict):
+                for item in result.get("payloads", []):
+                    if isinstance(item, dict) and item.get("text"):
+                        output = item["text"]
+                        break
+
+        if output:
+            agent_run.add_output(output)
+
     def _handle_agent_event(self, event: dict[str, Any]) -> None:
         """Handle agent event and buffer output."""
         payload = event.get("payload", {})
@@ -414,13 +444,7 @@ class OpenClawGatewayClient:
             list(data.keys()) if data else "none",
         )
 
-        # Buffer output from either 'output' field or 'data.text' field
-        output = payload.get("output")
-        if not output and "text" in data:
-            output = data.get("text")
-
-        if output:
-            agent_run.add_output(output)
+        self._buffer_agent_payload(agent_run, payload)
 
         # Check for completion - either via status field or phase field
         status = payload.get("status")
@@ -431,8 +455,7 @@ class OpenClawGatewayClient:
             summary = payload.get("summary")
             agent_run.set_complete(status, summary)
             _LOGGER.info("Agent run %s completed with status: %s", run_id, status)
-        elif phase == "end" or phase == "complete":
-            # New-style completion via phase
+        elif (phase == "end" or phase == "complete") and not data.get("itemId"):
             agent_run.set_complete("ok", None)
             _LOGGER.info("Agent run %s completed (phase: %s)", run_id, phase)
         elif status:
