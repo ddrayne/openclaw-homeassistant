@@ -76,6 +76,9 @@ class GatewayProtocol:
         # Fatal error that stopped the connection loop (auth / protocol)
         self._fatal_error: Exception | None = None
         self._on_fatal_error: Callable[[Exception], None] | None = None
+        # Fired after every successful handshake so callers can re-issue
+        # per-connection state (e.g. session subscriptions) on reconnect.
+        self._on_connected: Callable[[], None] | None = None
 
         # Build WebSocket URI (include token as query param for gateway auth)
         protocol = "wss" if use_ssl else "ws"
@@ -178,6 +181,15 @@ class GatewayProtocol:
                         self._heartbeat_task = asyncio.create_task(
                             self._heartbeat_loop()
                         )
+                        # Notify callers now that the receive loop is running,
+                        # so any subscription requests they send get responses.
+                        if self._on_connected:
+                            try:
+                                self._on_connected()
+                            except Exception:  # pylint: disable=broad-except
+                                _LOGGER.exception(
+                                    "on_connected callback failed"
+                                )
                         await self._receive_task
 
                     except GatewayAuthenticationError as err:

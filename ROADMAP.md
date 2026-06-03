@@ -1,54 +1,56 @@
 # Roadmap & Enhancement Plan
 
-This document tracks release scope and future ideas for the OpenClaw Home Assistant integration.
+Release scope and future ideas for the OpenClaw Home Assistant integration. This
+file reflects what is **actually shipped** — earlier versions of this document
+listed features (cron/spawn services, usage sensors) that were never implemented.
 
-## Release 1.2 (Beta) - Done
+## Shipped today
 
-- Streaming responses with HA streaming fallback
-- Persistent WebSocket connection with keepalive and reconnects
-- Session selector in config flow + `openclaw.set_session`
-- Model override and thinking mode override
-- Usage sensors (tokens, cost, message count)
-- Background task spawning (`openclaw.spawn_task`) with `openclaw_task_complete` event
-- Cron services (`openclaw.cron_add`, `openclaw.cron_remove`, `openclaw.cron_run`)
+- **Conversation entity** — voice/text Assist agent backed by the OpenClaw Gateway,
+  with streaming responses (and a fallback for older HA), per-request model/thinking
+  overrides, and session selection.
+- **Multi-turn voice** — keeps the satellite mic open when the agent's reply asks a
+  follow-up question (`continue_conversation`).
+- **Proactive voice** (opt-in) — the agent can speak first on a satellite
+  (`assist_satellite.announce` / `start_conversation`) for cron/background/follow-up
+  turns. See the README "Proactive Voice" section.
+- **TTS hygiene** — emoji stripping and optional length trimming.
+- **Auth** — token + Ed25519 device pairing, with reauth and pairing flows; auto for
+  local connections.
+- **Connection** — persistent WebSocket with keepalive and automatic reconnect.
+- **Services** — `openclaw.reconnect`, `openclaw.set_session`.
+- **Diagnostic sensors** — gateway uptime, connected clients, health; connectivity
+  binary sensor; config-entry diagnostics.
 
-## 2.0 Candidates (Backburner)
+## Ideas (not yet built)
 
-### Agent & Session Enhancements
-- Session management expansions (multi-entity sessions, history, cross-session send)
-- Memory search injection (optional pre-query context)
-- Proactive notifications based on memory/context
-- Voice profile switching (per-user sessions)
-- Integration with HA's LLM conversation API
+These are candidates, not commitments. The gateway exposes far more than the
+integration currently uses; the most natural next steps for *Home Assistant users*:
 
-### Scheduling & Automation
-- Natural language reminders (`openclaw.schedule_reminder`)
-- Cron job listing UI or sensors
-- Event hooks for cron run outcomes
+### Voice-first
+- Smarter follow-up detection than the simple `?` heuristic.
+- Per-speaker / per-room sessions.
 
-### Performance & Reliability
-- Response caching
-- Parallel query processing
-- Adaptive timeouts
+### Automation platform (for automation authors)
+- A `notify` platform wrapping the gateway `send` method (Telegram/WhatsApp/etc.).
+  Needs `operator.write` (already held).
+- `openclaw.spawn_task` service + `openclaw_task_complete` event, via the `agent`
+  method + `agent.wait`. Needs `operator.write` (already held).
+- Cron management services. **Note:** cron *writes* (`cron.add/remove/run`) require
+  the `operator.admin` scope, which the integration does not currently request —
+  adding it would force existing users to re-pair, so this is gated behind a future
+  scope-expansion release.
+
+### Approvals
+- Surface `exec.approval.requested` as an HA event + a `resolve_approval` service.
+  Requires the `operator.approvals` scope (re-pair), so deferred alongside cron-writes.
 
 ### Observability
-- Advanced diagnostics (latency breakdown, error rates, connection stats)
-- Additional usage sensors (queries today, average response time)
-- Advanced observability dashboards
+- Token usage / cost sensors, channel-status and model-auth sensors.
 
 ## Contributing
 
-Contributions are welcome! If you'd like to implement any of these features:
-
-1. Open an issue to discuss the approach
-2. Reference this roadmap in your PR
-3. Update the roadmap status when starting work
-
-## Feedback
-
-Have ideas for other enhancements? Open an issue with the `enhancement` label!
-
----
-
-*Last Updated: 2026-01-25*  
-*Integration Version: 1.0.1*
+1. Open an issue to discuss the approach.
+2. Reference this roadmap in your PR.
+3. Keep behavior changes opt-in or clearly called out — don't change defaults for
+   existing users without a CHANGELOG note.

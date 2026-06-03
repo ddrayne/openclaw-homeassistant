@@ -32,6 +32,7 @@ This integration lets you access your **entire OpenClaw agent** - with all its s
 - **Customizable Sessions**: Session selector in setup plus `openclaw.set_session` for fast switching
 - **Model & Thinking Overrides**: Per-request model and reasoning mode controls
 - **Streaming Responses**: Stream output when Home Assistant supports streaming conversation results
+- **Proactive Voice** (opt-in): Let the agent speak first — reminders, "task done", follow-ups — on a satellite via `assist_satellite.announce`/`start_conversation`
 - **Diagnostic Sensors**: Gateway uptime, connected clients, and health status sensors
 - **Fast Responses**: Typical response time of 5-10 seconds for most queries
 - **Easy Configuration**: Simple UI-based setup through Home Assistant
@@ -381,6 +382,34 @@ Refer to the [OpenClaw documentation](https://docs.openclaw.ai/) for details on 
 3. Click **Submit**
 
 Now all voice commands through Home Assistant will use your voice-optimized configuration, while other OpenClaw interfaces (Telegram, Discord, etc.) continue using their own settings.
+
+### Proactive Voice
+
+By default the assistant only speaks when spoken to. **Proactive voice** (opt-in)
+lets the agent speak *first* on a satellite — for example announcing a reminder,
+telling you a background task has finished, or asking a follow-up.
+
+Enable it in **Settings** → **Devices & Services** → **OpenClaw** → **Configure**:
+
+- **Proactive voice**: turn the feature on (off by default).
+- **Satellite to speak on**: the `assist_satellite` entity to play announcements on
+  (e.g. a Home Assistant Voice PE).
+- **Proactive mode**:
+  - `announce` — speak the message.
+  - `start_conversation` — speak the message *and* re-open the mic so you can
+    reply without the wake word.
+
+Replies you trigger yourself are never re-announced — only agent-*initiated* turns are.
+
+> **Note:** this is a *delivery* mechanism. It only speaks when the gateway side
+> produces a proactive turn — e.g. an agent **cron job**, a **background task**, or
+> the agent choosing to message you. If you have none of those configured on the
+> OpenClaw side, you won't hear anything. Set up agent reminders/cron in OpenClaw to
+> give it something to say.
+
+> **Tip (no extra setup):** the conversation entity is callable from any automation
+> via the `conversation.process` service — ask the agent a question on a schedule and
+> act on its reply (e.g. announce a morning briefing).
 
 ### Emoji Stripping
 

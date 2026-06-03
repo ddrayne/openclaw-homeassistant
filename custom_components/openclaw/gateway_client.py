@@ -4,8 +4,9 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
+from .const import PROACTIVE_SUPPRESS_SECONDS
 from .exceptions import (
     AgentExecutionError,
     GatewayAuthenticationError,
@@ -147,9 +148,17 @@ class OpenClawGatewayClient:
         self._thinking = thinking
         self._agent_runs: dict[str, AgentRun] = {}
 
+        # Proactive voice: callback invoked with agent-initiated assistant text,
+        # and a timestamp of the most recent local agent activity used to
+        # suppress echoes of the user's own conversation turns.
+        self._proactive_callback: Callable[[str], None] | None = None
+        self._last_local_turn: float = 0.0
+
         # Register event handlers
         self._gateway.on_event("agent", self._handle_agent_event)
         self._gateway.on_event("presence", self._handle_presence_event)
+        self._gateway.on_event("session.message", self._handle_session_message)
+        self._gateway._on_connected = self._on_gateway_connected
 
     @property
     def fatal_error(self) -> Exception | None:
@@ -239,6 +248,8 @@ class OpenClawGatewayClient:
         self, message: str, idempotency_key: str, *, stream: bool = False
     ) -> AgentRun:
         """Send the agent request and return a tracked AgentRun."""
+        # Mark local activity so proactive voice suppresses the session echo.
+        self._last_local_turn = time.monotonic()
         options: dict[str, Any] = {}
         if self._model:
             options["model"] = self._model
@@ -459,6 +470,10 @@ class OpenClawGatewayClient:
             _LOGGER.debug("Agent event for unknown run: %s", run_id)
             return
 
+        # Keep the proactive suppression window fresh while one of our own runs
+        # is active, so its session-message echo is not re-announced.
+        self._last_local_turn = time.monotonic()
+
         # Log event details for debugging
         data = payload.get("data", {})
         stream = payload.get("stream")
@@ -526,6 +541,91 @@ class OpenClawGatewayClient:
             if isinstance(payload, list):
                 payload = {"clients": payload}
             self._gateway._presence = payload
+
+    # --- Proactive voice -------------------------------------------------
+
+    def set_proactive_handler(self, callback: Callable[[str], None]) -> None:
+        """Enable proactive announcements and subscribe to session messages.
+
+        Subscribes immediately if already connected; otherwise the connect
+        hook re-issues the subscription on (re)connect.
+        """
+        self._proactive_callback = callback
+        if self._gateway.connected:
+            self._schedule_subscribe()
+
+    def clear_proactive_handler(self) -> None:
+        """Disable proactive announcements."""
+        self._proactive_callback = None
+
+    def _on_gateway_connected(self) -> None:
+        """Re-issue the session subscription after every (re)connect."""
+        if self._proactive_callback is not None:
+            self._schedule_subscribe()
+
+    def _schedule_subscribe(self) -> None:
+        asyncio.create_task(self._subscribe_session_messages())
+
+    async def _subscribe_session_messages(self) -> None:
+        """Subscribe to the watched session's message stream (operator.read)."""
+        try:
+            await self._gateway.send_request(
+                "sessions.messages.subscribe",
+                {"key": self._effective_session_key},
+                timeout=5.0,
+            )
+            _LOGGER.debug(
+                "Subscribed to session messages for %s",
+                self._effective_session_key,
+            )
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.warning(
+                "Failed to subscribe to session messages: %s", err
+            )
+
+    @staticmethod
+    def _extract_message_text(message: dict[str, Any]) -> str:
+        """Extract plain text from a session.message payload's message."""
+        content = message.get("content")
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            parts: list[str] = []
+            for part in content:
+                if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    parts.append(part["text"])
+                elif isinstance(part, str):
+                    parts.append(part)
+            return "".join(parts).strip()
+        text = message.get("text")
+        return text.strip() if isinstance(text, str) else ""
+
+    def _handle_session_message(self, event: dict[str, Any]) -> None:
+        """Announce agent-initiated assistant turns via the proactive callback.
+
+        Skips the echo of the user's own conversation turns: any assistant
+        message arriving close to local agent activity (see _last_local_turn)
+        was already spoken through the normal conversation pipeline.
+        """
+        if self._proactive_callback is None:
+            return
+        payload = event.get("payload", {})
+        message = payload.get("message") or {}
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            return
+        if time.monotonic() - self._last_local_turn < PROACTIVE_SUPPRESS_SECONDS:
+            _LOGGER.debug(
+                "Suppressing session message near a local turn (run echo)"
+            )
+            return
+        text = self._extract_message_text(message)
+        if not text:
+            return
+        _LOGGER.debug("Proactive assistant message detected (%d chars)", len(text))
+        try:
+            self._proactive_callback(text)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Proactive callback failed")
 
     async def health(self) -> dict[str, Any]:
         """Get Gateway health status."""

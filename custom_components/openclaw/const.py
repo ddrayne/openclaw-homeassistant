@@ -14,6 +14,16 @@ DEFAULT_STRIP_EMOJIS = True  # Strip emojis from TTS by default
 DEFAULT_TTS_MAX_CHARS = 0  # 0 disables TTS trimming
 DEFAULT_AGENT_ID = None  # Use gateway default agent
 
+# Proactive voice: speak agent-initiated turns (cron/background/follow-ups) on a
+# satellite. Opt-in so existing installs are unaffected.
+DEFAULT_PROACTIVE_ENABLED = False
+DEFAULT_PROACTIVE_MODE = "announce"
+PROACTIVE_MODE_ANNOUNCE = "announce"
+PROACTIVE_MODE_START_CONVERSATION = "start_conversation"
+# Ignore session-message echoes of the user's own Q&A that land within this many
+# seconds of local agent activity (the satellite already spoke those).
+PROACTIVE_SUPPRESS_SECONDS = 15.0
+
 # Configuration keys
 CONF_HOST = "host"
 CONF_PORT = "port"
@@ -26,6 +36,9 @@ CONF_MODEL = "model"
 CONF_THINKING = "thinking"
 CONF_STRIP_EMOJIS = "strip_emojis"
 CONF_TTS_MAX_CHARS = "tts_max_chars"
+CONF_PROACTIVE_ENABLED = "proactive_enabled"
+CONF_PROACTIVE_SATELLITE = "proactive_satellite"
+CONF_PROACTIVE_MODE = "proactive_mode"
 # Connection states
 STATE_CONNECTED = "connected"
 STATE_DISCONNECTED = "disconnected"

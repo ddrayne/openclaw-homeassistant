@@ -12,11 +12,17 @@ from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_PROACTIVE_ENABLED,
+    CONF_PROACTIVE_MODE,
+    CONF_PROACTIVE_SATELLITE,
     CONF_STRIP_EMOJIS,
     CONF_TTS_MAX_CHARS,
+    DEFAULT_PROACTIVE_ENABLED,
+    DEFAULT_PROACTIVE_MODE,
     DEFAULT_STRIP_EMOJIS,
     DEFAULT_TTS_MAX_CHARS,
     DOMAIN,
+    PROACTIVE_MODE_START_CONVERSATION,
 )
 from .exceptions import (
     AgentExecutionError,
@@ -107,6 +113,61 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         self._attr_unique_id = config_entry.entry_id
         self._attr_supports_streaming = self._supports_streaming_result()
 
+    async def async_added_to_hass(self) -> None:
+        """Register the proactive-voice handler when enabled."""
+        await super().async_added_to_hass()
+        config = {**self._config_entry.data, **self._config_entry.options}
+        if config.get(CONF_PROACTIVE_ENABLED, DEFAULT_PROACTIVE_ENABLED):
+            self._gateway_client.set_proactive_handler(
+                self._on_proactive_message
+            )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop receiving proactive announcements."""
+        self._gateway_client.clear_proactive_handler()
+        await super().async_will_remove_from_hass()
+
+    def _on_proactive_message(self, text: str) -> None:
+        """Schedule a satellite announcement (called from the event loop)."""
+        self.hass.async_create_task(self._async_announce(text))
+
+    async def _async_announce(self, text: str) -> None:
+        """Speak an agent-initiated message on the configured satellite."""
+        config = {**self._config_entry.data, **self._config_entry.options}
+        satellite = config.get(CONF_PROACTIVE_SATELLITE)
+        if not satellite:
+            _LOGGER.warning(
+                "Proactive voice enabled but no satellite configured"
+            )
+            return
+
+        speech = text
+        if config.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS):
+            speech = strip_emojis(speech)
+        speech = trim_tts_text(
+            speech, config.get(CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS)
+        )
+        if not speech.strip():
+            return
+
+        mode = config.get(CONF_PROACTIVE_MODE, DEFAULT_PROACTIVE_MODE)
+        if mode == PROACTIVE_MODE_START_CONVERSATION:
+            service, key = "start_conversation", "start_message"
+        else:
+            service, key = "announce", "message"
+
+        try:
+            await self.hass.services.async_call(
+                "assist_satellite",
+                service,
+                {"entity_id": satellite, key: speech},
+                blocking=False,
+            )
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception(
+                "Failed to deliver proactive message to %s", satellite
+            )
+
     @staticmethod
     def _supports_streaming_result() -> bool:
         """Return whether the HA conversation result supports streaming."""
@@ -149,6 +210,13 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             "thinking": self._gateway_client.thinking,
             "strip_emojis": data.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS),
             "tts_max_chars": data.get(CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS),
+            "proactive_enabled": data.get(
+                CONF_PROACTIVE_ENABLED, DEFAULT_PROACTIVE_ENABLED
+            ),
+            "proactive_satellite": data.get(CONF_PROACTIVE_SATELLITE),
+            "proactive_mode": data.get(
+                CONF_PROACTIVE_MODE, DEFAULT_PROACTIVE_MODE
+            ),
         }
 
     @property

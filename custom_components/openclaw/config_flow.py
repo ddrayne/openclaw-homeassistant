@@ -16,6 +16,9 @@ from homeassistant.helpers import aiohttp_client, selector
 from .const import (
     CONF_AGENT_ID,
     CONF_MODEL,
+    CONF_PROACTIVE_ENABLED,
+    CONF_PROACTIVE_MODE,
+    CONF_PROACTIVE_SATELLITE,
     CONF_SESSION_KEY,
     CONF_STRIP_EMOJIS,
     CONF_THINKING,
@@ -25,6 +28,8 @@ from .const import (
     DEFAULT_HOST,
     DEFAULT_MODEL,
     DEFAULT_PORT,
+    DEFAULT_PROACTIVE_ENABLED,
+    DEFAULT_PROACTIVE_MODE,
     DEFAULT_SESSION_KEY,
     DEFAULT_STRIP_EMOJIS,
     DEFAULT_THINKING,
@@ -32,6 +37,8 @@ from .const import (
     DEFAULT_TIMEOUT,
     DEFAULT_USE_SSL,
     DOMAIN,
+    PROACTIVE_MODE_ANNOUNCE,
+    PROACTIVE_MODE_START_CONVERSATION,
 )
 from .exceptions import (
     DevicePairingRequiredError,
@@ -144,6 +151,39 @@ def _build_thinking_selector() -> selector.SelectSelector:
             custom_value=True,
         )
     )
+
+
+def _proactive_schema_fields(current: dict[str, Any] | None = None) -> dict:
+    """Shared opt-in proactive-voice fields for the setup and options forms."""
+    current = current or {}
+    return {
+        vol.Optional(
+            CONF_PROACTIVE_ENABLED,
+            default=current.get(
+                CONF_PROACTIVE_ENABLED, DEFAULT_PROACTIVE_ENABLED
+            ),
+        ): bool,
+        vol.Optional(
+            CONF_PROACTIVE_SATELLITE,
+            description={
+                "suggested_value": current.get(CONF_PROACTIVE_SATELLITE)
+            },
+        ): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="assist_satellite")
+        ),
+        vol.Optional(
+            CONF_PROACTIVE_MODE,
+            default=current.get(CONF_PROACTIVE_MODE, DEFAULT_PROACTIVE_MODE),
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    PROACTIVE_MODE_ANNOUNCE,
+                    PROACTIVE_MODE_START_CONVERSATION,
+                ],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
+    }
 
 
 class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -297,6 +337,7 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_TTS_MAX_CHARS, default=DEFAULT_TTS_MAX_CHARS
                 ): vol.All(int, vol.Range(min=0, max=2000)),
+                **_proactive_schema_fields(),
             }
         )
 
@@ -491,6 +532,7 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS
                     ),
                 ): vol.All(int, vol.Range(min=0, max=2000)),
+                **_proactive_schema_fields(current),
             }
         )
 
