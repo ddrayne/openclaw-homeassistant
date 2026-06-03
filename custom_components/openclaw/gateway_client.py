@@ -80,7 +80,13 @@ class AgentRun:
         self.summary = summary
         self.complete_event.set()
         if self._stream_queue is not None:
-            if summary and not self._streamed_any:
+            # Only surface a summary as streamed content on success. On error the
+            # summary is an internal diagnostic (e.g. a stopReason); streaming it
+            # would speak the raw error via TTS and, by setting had_content, would
+            # suppress the conversation entity's friendly error fallback.
+            # stream_agent_request still raises on error status once the queue
+            # drains, so the caller fails cleanly.
+            if status == "ok" and summary and not self._streamed_any:
                 self._stream_queue.put_nowait(summary)
                 self._streamed_any = True
             self._stream_queue.put_nowait(None)

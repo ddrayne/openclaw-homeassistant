@@ -63,6 +63,23 @@ class TestAgentRun:
         run.add_output("[]")
         assert run.get_response() == "Done"
 
+    @pytest.mark.asyncio
+    async def test_ok_summary_streamed_when_no_tokens(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.set_complete("ok", "Final answer")
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["Final answer"]
+
+    @pytest.mark.asyncio
+    async def test_error_summary_not_streamed_as_content(self) -> None:
+        # On error the summary is an internal diagnostic; it must not be
+        # streamed as spoken content (which would also suppress the friendly
+        # error fallback in the conversation entity).
+        run = AgentRun("run-1", stream=True)
+        run.set_complete("error", "stopReason: boom")
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == []
+
 
 class TestHandleAgentEvent:
     def test_buffers_output_from_data_text(self) -> None:
