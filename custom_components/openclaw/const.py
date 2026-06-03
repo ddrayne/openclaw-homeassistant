@@ -33,8 +33,13 @@ STATE_CONNECTING = "connecting"
 STATE_ERROR = "error"
 
 # Gateway protocol
+# Advertise a range: keep min at 3 for backward compatibility with older
+# gateways while supporting v4, which OpenClaw 2026.6+ requires (the gateway
+# rejects clients whose maxProtocol < 4 with PROTOCOL_MISMATCH). The connect
+# handshake and the "agent" RPC params this integration uses are unchanged
+# between v3 and v4.
 PROTOCOL_MIN_VERSION = 3
-PROTOCOL_MAX_VERSION = 3
+PROTOCOL_MAX_VERSION = 4
 
 # Client identification
 CLIENT_ID = "gateway-client"
