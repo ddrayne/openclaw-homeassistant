@@ -134,6 +134,87 @@ class TestHandleAgentEvent:
         assert not run.complete_event.is_set()
         assert run.status is None
 
+    def test_lifecycle_stream_end_completes_run(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event(
+            {
+                "payload": {
+                    "runId": "run-1",
+                    "stream": "lifecycle",
+                    "data": {"phase": "end"},
+                }
+            }
+        )
+
+        assert run.complete_event.is_set()
+        assert run.status == "ok"
+
+    def test_item_stream_end_does_not_complete_run(self) -> None:
+        # Even without an itemId, a terminal phase on a non-lifecycle stream
+        # must not complete the run.
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event(
+            {
+                "payload": {
+                    "runId": "run-1",
+                    "stream": "item",
+                    "data": {"phase": "end"},
+                }
+            }
+        )
+
+        assert not run.complete_event.is_set()
+        assert run.status is None
+
+    def test_lifecycle_error_phase_marks_run_failed(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event(
+            {
+                "payload": {
+                    "runId": "run-1",
+                    "stream": "lifecycle",
+                    "data": {"phase": "error", "error": "boom"},
+                }
+            }
+        )
+
+        assert run.complete_event.is_set()
+        assert run.status == "error"
+        assert run.summary == "boom"
+
+    @pytest.mark.asyncio
+    async def test_error_phase_fails_request_fast(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        client._gateway.send_request = AsyncMock(  # type: ignore[attr-defined]
+            return_value={"payload": {"runId": "run-1"}}
+        )
+
+        task = asyncio.create_task(client.send_agent_request("hello"))
+
+        await _wait_for_run(client)
+
+        client._handle_agent_event(
+            {
+                "payload": {
+                    "runId": "run-1",
+                    "stream": "lifecycle",
+                    "data": {"phase": "error", "error": "kaboom"},
+                }
+            }
+        )
+
+        with pytest.raises(AgentExecutionError):
+            await task
+
     @pytest.mark.asyncio
     async def test_initial_ack_payload_text_can_complete_request(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)

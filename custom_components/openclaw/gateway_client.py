@@ -418,6 +418,26 @@ class OpenClawGatewayClient:
         if output:
             agent_run.add_output(output)
 
+    @staticmethod
+    def _is_run_lifecycle_event(
+        stream: str | None, data: dict[str, Any]
+    ) -> bool:
+        """Return True if a terminal phase on this event describes the run.
+
+        The gateway emits agent events on several streams (``lifecycle``,
+        ``assistant``, ``item``, ``tool``, ``command_output``, ``patch``, ...).
+        Only the ``lifecycle`` stream's terminal phases (``end``/``error``)
+        describe the run as a whole; the per-item streams emit their own ``end``
+        phases for individual tool/command items and must not complete the run.
+
+        Older gateways may omit the ``stream`` field. In that case fall back to
+        the itemId heuristic: per-item terminal events carry a ``data.itemId``
+        while the run-level terminal event does not.
+        """
+        if stream:
+            return stream == "lifecycle"
+        return not data.get("itemId")
+
     def _handle_agent_event(self, event: dict[str, Any]) -> None:
         """Handle agent event and buffer output."""
         payload = event.get("payload", {})
@@ -435,9 +455,12 @@ class OpenClawGatewayClient:
 
         # Log event details for debugging
         data = payload.get("data", {})
+        stream = payload.get("stream")
         _LOGGER.debug(
-            "Agent event for %s: status=%s, output=%s, summary=%s, data keys=%s",
+            "Agent event for %s: stream=%s, status=%s, output=%s, summary=%s, "
+            "data keys=%s",
             run_id,
+            stream,
             payload.get("status"),
             "yes" if payload.get("output") else "no",
             "yes" if payload.get("summary") else "no",
@@ -446,22 +469,39 @@ class OpenClawGatewayClient:
 
         self._buffer_agent_payload(agent_run, payload)
 
-        # Check for completion - either via status field or phase field
+        # Determine completion. The gateway multiplexes several streams under
+        # the single "agent" event; only the run-level "lifecycle" stream's
+        # terminal phases describe the run itself, so a terminal phase only
+        # completes the run when it belongs to that stream.
         status = payload.get("status")
         phase = data.get("phase")
+        run_terminal = self._is_run_lifecycle_event(stream, data)
 
         if status in ("ok", "error"):
-            # Old-style completion
+            # Legacy completion signalled by a top-level status field.
             summary = payload.get("summary")
             agent_run.set_complete(status, summary)
             _LOGGER.info("Agent run %s completed with status: %s", run_id, status)
-        elif (phase == "end" or phase == "complete") and not data.get("itemId"):
+        elif phase == "error" and run_terminal:
+            # Failed run: complete with error status so the request fails fast
+            # instead of waiting for the client timeout.
+            summary = data.get("error") or data.get("stopReason")
+            agent_run.set_complete("error", summary)
+            _LOGGER.warning(
+                "Agent run %s failed (phase: error): %s", run_id, summary
+            )
+        elif phase in ("end", "complete") and run_terminal:
             agent_run.set_complete("ok", None)
             _LOGGER.info("Agent run %s completed (phase: %s)", run_id, phase)
         elif status:
             _LOGGER.debug("Agent run %s status: %s (not complete)", run_id, status)
         elif phase:
-            _LOGGER.debug("Agent run %s phase: %s", run_id, phase)
+            _LOGGER.debug(
+                "Agent run %s phase: %s (stream=%s, not run-terminal)",
+                run_id,
+                phase,
+                stream,
+            )
 
     @property
     def connect_snapshot(self) -> dict[str, Any]:
