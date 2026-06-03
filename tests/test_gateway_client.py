@@ -57,6 +57,12 @@ class TestAgentRun:
         run.add_output("Hello world")
         assert run.get_response() == "Hello world"
 
+    def test_add_output_ignores_structural_payload_after_text(self) -> None:
+        run = AgentRun("run-1")
+        run.add_output("Done")
+        run.add_output("[]")
+        assert run.get_response() == "Done"
+
 
 class TestHandleAgentEvent:
     def test_buffers_output_from_data_text(self) -> None:
@@ -69,6 +75,22 @@ class TestHandleAgentEvent:
         )
 
         assert run.get_response() == "Hi"
+
+    def test_buffers_output_from_result_payload_text(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event(
+            {
+                "payload": {
+                    "runId": "run-1",
+                    "result": {"payloads": [{"text": "Action complete"}]},
+                }
+            }
+        )
+
+        assert run.get_response() == "Action complete"
 
     def test_marks_complete_with_summary(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
@@ -94,6 +116,46 @@ class TestHandleAgentEvent:
 
         assert run.complete_event.is_set()
         assert run.status == "ok"
+
+    def test_item_phase_end_does_not_complete_run(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event(
+            {
+                "payload": {
+                    "runId": "run-1",
+                    "data": {"phase": "end", "itemId": "tool-1"},
+                }
+            }
+        )
+
+        assert not run.complete_event.is_set()
+        assert run.status is None
+
+    @pytest.mark.asyncio
+    async def test_initial_ack_payload_text_can_complete_request(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        client._gateway.send_request = AsyncMock(  # type: ignore[attr-defined]
+            return_value={
+                "payload": {
+                    "runId": "run-1",
+                    "result": {"payloads": [{"text": "Done from ack"}]},
+                }
+            }
+        )
+
+        task = asyncio.create_task(client.send_agent_request("hello"))
+
+        await _wait_for_run(client)
+
+        client._handle_agent_event(
+            {"payload": {"runId": "run-1", "status": "ok"}}
+        )
+
+        result = await task
+        assert result == "Done from ack"
 
 
 class TestSendAgentRequest:
