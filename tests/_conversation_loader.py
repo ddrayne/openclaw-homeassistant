@@ -47,6 +47,10 @@ def load_conversation_module(*, streaming: str = "none") -> ModuleType:
     intent_mod = _stub_module("homeassistant.helpers.intent")
     _stub_module("homeassistant.helpers")
     entity_platform_mod = _stub_module("homeassistant.helpers.entity_platform")
+    exceptions_mod = _stub_module("homeassistant.exceptions")
+    exceptions_mod.HomeAssistantError = type(
+        "HomeAssistantError", (Exception,), {}
+    )
 
     class ConversationEntity:
         pass

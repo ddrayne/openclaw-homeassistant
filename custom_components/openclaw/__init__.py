@@ -272,11 +272,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry."""
-    try:
-        await async_unload_entry(hass, entry)
-    except Exception:
-        _LOGGER.exception(
-            "Failed to unload entry during reload: %s", entry.entry_id
-        )
-    await async_setup_entry(hass, entry)
+    """Reload config entry.
+
+    Delegate to Home Assistant's config-entry machinery rather than calling
+    async_unload_entry/async_setup_entry directly. The manual path bypassed the
+    entry's async_on_unload cleanup, so each reload leaked another update
+    listener; the next options change then fired several concurrent reloads and
+    platforms were set up twice ("already been setup").
+    """
+    await hass.config_entries.async_reload(entry.entry_id)

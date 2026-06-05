@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -157,15 +158,25 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             service, key = "announce", "message"
 
         try:
+            # blocking=True so failures surface here and can be handled, rather
+            # than HA core logging an unhandled "Error executing service".
             await self.hass.services.async_call(
                 "assist_satellite",
                 service,
                 {"entity_id": satellite, key: speech},
-                blocking=False,
+                blocking=True,
+            )
+        except HomeAssistantError as err:
+            # Satellite offline/busy or a transport reset are expected
+            # operational conditions; log cleanly without a traceback.
+            _LOGGER.warning(
+                "Could not announce proactive message on %s: %s",
+                satellite,
+                err,
             )
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception(
-                "Failed to deliver proactive message to %s", satellite
+                "Unexpected error announcing proactive message on %s", satellite
             )
 
     @staticmethod

@@ -126,3 +126,20 @@ class TestAnnounce:
         entity = _make_entity({"proactive_enabled": True})
         await entity._async_announce("hi")
         assert entity.hass.services.calls == []
+
+    @pytest.mark.asyncio
+    async def test_satellite_error_is_handled(self) -> None:
+        # A busy/offline satellite raises HomeAssistantError; _async_announce
+        # must swallow it rather than letting it surface as an unhandled error.
+        entity = _make_entity(
+            {
+                "proactive_enabled": True,
+                "proactive_satellite": "assist_satellite.kitchen",
+            }
+        )
+
+        async def _boom(*_args, **_kwargs):
+            raise _conv.HomeAssistantError("device offline")
+
+        entity.hass.services.async_call = _boom
+        await entity._async_announce("hi")  # must not raise
