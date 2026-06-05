@@ -6,454 +6,469 @@
   <img src="custom_components/openclaw/icon.png" alt="OpenClaw Icon" width="128" height="128">
 </p>
 
-Integrate [OpenClaw](https://openclaw.ai/) with Home Assistant's voice control system, bringing your personal AI agent to your smart home.
+Talk to your [OpenClaw](https://openclaw.ai/) AI agent through Home Assistant's
+voice control and Assist — and let it talk back, unprompted, on your voice
+satellites.
 
-**OpenClaw** is an open-source AI agent system that runs locally on your machine. It can browse the web, manage emails and calendar, access files, execute commands, and integrate with 50+ services like Gmail, GitHub, Spotify, and Obsidian. Works with Claude, GPT, or local AI models.
+**OpenClaw** is an open-source AI agent that runs locally on your machine. It can
+browse the web, manage email and calendar, access files, run commands, and
+integrate with 50+ services (Gmail, GitHub, Spotify, Obsidian, …), using Claude,
+GPT, or local models. This integration exposes your **entire agent** — its skills,
+integrations, memory, and context — as a Home Assistant conversation agent.
+Whatever your OpenClaw does in WhatsApp, Telegram, or Discord, it can now do
+through your smart-home voice assistant.
 
-This integration lets you access your **entire OpenClaw agent** - with all its skills, integrations, memory, and capabilities - through Home Assistant's voice interface and Assist. Whatever your OpenClaw can do in WhatsApp, Telegram, or Discord, it can now do through your smart home voice assistant.
+## Contents
+
+- [Features](#features)
+- [Entities](#entities)
+- [Services](#services)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+  - [Setup walkthrough](#setup-walkthrough)
+  - [Options reference](#options-reference)
+  - [Connect the voice assistant](#connect-the-voice-assistant)
+- [Usage](#usage)
+  - [Example interactions](#example-interactions)
+  - [Call the agent from automations](#call-the-agent-from-automations)
+- [Feature guides](#feature-guides)
+  - [Multi-turn voice](#multi-turn-voice)
+  - [Proactive voice](#proactive-voice)
+  - [Sessions & agent routing](#sessions--agent-routing)
+  - [Model & thinking overrides](#model--thinking-overrides)
+  - [Emoji stripping](#emoji-stripping)
+  - [TTS response trimming](#tts-response-trimming)
+  - [Voice-optimized session](#voice-optimized-session)
+  - [Multiple gateways](#multiple-gateways)
+- [Remote gateway setup](#remote-gateway-setup)
+- [Troubleshooting](#troubleshooting)
+- [Limitations](#limitations)
+- [Security](#security)
+- [Contributing](#contributing)
+- [Credits & support](#credits--support)
 
 ## Features
 
-### OpenClaw Agent Capabilities
-- **Full Agent Access**: Complete access to your OpenClaw agent with all configured skills and integrations
-- **System Integration**: Browse web, manage files, execute commands - everything your OpenClaw can do
-- **Service Integrations**: Access Gmail, Calendar, GitHub, Spotify, Obsidian, and 50+ other services
-- **Persistent Memory**: Your OpenClaw's memory and context carry over to voice interactions
-- **Custom Skills**: Use any custom skills or plugins you've installed in OpenClaw
-- **Multi-Model Support**: Works with whatever AI model you've configured (Claude, GPT, local models)
+**Agent**
+- **Full agent access** — every skill, integration, memory, and model you've
+  configured in OpenClaw, reachable by voice or text.
+- **Multi-model** — uses whatever model OpenClaw runs (Claude, GPT, local), with
+  optional per-integration model and thinking-mode overrides.
 
-### Integration Features
-- **Direct WebSocket Connection**: Real-time, persistent connection to OpenClaw Gateway
-- **Smart TTS Processing**: Configurable emoji stripping for clean text-to-speech output
-- **Voice-Friendly Limits**: Optional TTS response trimming to keep speech concise
-- **Flexible Authentication**: Secure token + device identity auth with SSL/TLS support
-- **Device Pairing**: One-time device approval with Ed25519 keypair, auto-approved for local connections
-- **Reliable Connection**: Keepalive pings, automatic reconnects, and graceful error handling
-- **Customizable Sessions**: Session selector in setup plus `openclaw.set_session` for fast switching
-- **Model & Thinking Overrides**: Per-request model and reasoning mode controls
-- **Streaming Responses**: Stream output when Home Assistant supports streaming conversation results
-- **Proactive Voice** (opt-in): Let the agent speak first — reminders, "task done", follow-ups — on a satellite via `assist_satellite.announce`/`start_conversation`
-- **Diagnostic Sensors**: Gateway uptime, connected clients, and health status sensors
-- **Fast Responses**: Typical response time of 5-10 seconds for most queries
-- **Easy Configuration**: Simple UI-based setup through Home Assistant
-- **Diagnostics Support**: Built-in diagnostics for troubleshooting
+**Conversation**
+- **Assist conversation agent** — drop-in agent for any Home Assistant voice
+  pipeline or the Assist text box.
+- **Streaming responses** — streams partial output on HA versions that support it,
+  with automatic fallback to buffered responses on older versions.
+- **Multi-turn voice** — when the agent asks a follow-up question, the satellite's
+  mic stays open so you can answer without repeating the wake word. Automatic, no
+  setup. [Details ›](#multi-turn-voice)
+- **Proactive voice** (opt-in) — let the agent speak *first* on a satellite
+  (reminders, "task done", follow-ups) via `assist_satellite.announce` /
+  `start_conversation`. [Details ›](#proactive-voice)
+- **TTS hygiene** — optional emoji stripping and length trimming for clean speech.
 
-## Documentation
+**Connection & auth**
+- **Direct WebSocket** — real-time, persistent connection to the OpenClaw Gateway.
+- **Token + device identity** — Gateway token plus an Ed25519 device keypair;
+  remote devices approve once, local connections auto-approve.
+- **Resilient** — keepalive pings, automatic reconnect, reauth flow, and HA repair
+  issues when a token/pairing needs attention.
+- **Sessions & agent routing** — route HA conversations to a specific OpenClaw
+  session and/or agent; switch sessions on the fly. [Details ›](#sessions--agent-routing)
 
-📚 **Additional Guides:**
+**Operations**
+- **Diagnostic entities** — gateway uptime, connected clients, health, and a
+  connectivity binary sensor. [See entities ›](#entities)
+- **Diagnostics download** + UI-based configuration, **multiple gateways**, and a
+  `reconnect` service.
 
-- **[Roadmap & Enhancement Plan](ROADMAP.md)** - Planned features, optimizations, and development priorities
-- **[Gateway API Documentation](GATEWAY_API.md)** - Comprehensive OpenClaw Gateway API reference for developers
-- **[Agent Configuration Guide](AGENTS.md)** - Understanding and configuring OpenClaw agents for optimal voice assistant performance
+## Entities
+
+Each gateway you add creates one device, **OpenClaw Gateway**, with:
+
+| Entity | Type | Category | Reports |
+|---|---|---|---|
+| `conversation.openclaw` | Conversation | — | Your OpenClaw agent — select it as a conversation agent in Assist |
+| OpenClaw Gateway Uptime | Sensor | Diagnostic | Gateway uptime, in seconds |
+| OpenClaw Connected Clients | Sensor | Diagnostic | Number of clients connected to the gateway |
+| OpenClaw Gateway Health | Sensor | Diagnostic | Health status (e.g. `ok`) with version/uptime attributes |
+| Gateway Connectivity | Binary sensor | Diagnostic | `connected` / `disconnected` |
+
+The conversation entity also exposes the active host, port, session, agent, model,
+thinking mode, and TTS/proactive settings as state attributes.
+
+> Exact entity IDs are generated by Home Assistant and may differ from the examples
+> here — check **Developer Tools → States** for the ones in your install.
+
+## Services
+
+| Service | Fields | Description |
+|---|---|---|
+| `openclaw.reconnect` | `entry_id` *(optional)* | Force a reconnect for one entry, or all entries if omitted. |
+| `openclaw.set_session` | `session_key` *(required)*, `entry_id` *(optional)* | Switch the active OpenClaw session for new requests. |
+
+```yaml
+# Example: switch the active session
+action: openclaw.set_session
+data:
+  session_key: "voice-assistant"
+```
 
 ## Requirements
 
-- Home Assistant 2024.1.0 or later
-- A configured [OpenClaw](https://openclaw.ai/) installation with Gateway running (local or remote)
-- Gateway token (required since OpenClaw 2026.2.13+)
+- **Home Assistant 2024.1.0 or later.** Streaming and multi-turn voice use newer
+  Assist APIs and degrade gracefully on older versions; **proactive voice** needs
+  an `assist_satellite` entity (e.g. Home Assistant Voice PE) on a recent HA.
+- A configured [OpenClaw](https://openclaw.ai/) install with the **Gateway running**
+  (local or remote).
+- A **Gateway token** (required since OpenClaw 2026.2.13+).
 
-**Note**: OpenClaw runs on macOS, Windows, and Linux. You'll need to have OpenClaw installed and configured with your desired AI model (Claude, GPT, or local) and any service integrations you want to use before connecting to Home Assistant.
-
-## Upgrading from Clawd v1.2.x
-
-See [MIGRATION.md](MIGRATION.md) for the step-by-step upgrade guide.
+> OpenClaw runs on macOS, Windows, and Linux. Install and configure it — with your
+> chosen model and any service integrations — before connecting Home Assistant.
 
 ## Installation
 
-### HACS (Recommended)
+### HACS (recommended)
 
-1. Open HACS in Home Assistant
-2. Go to "Integrations"
-3. Click the three dots in the top right corner
-4. Select "Custom repositories"
-5. Add this repository URL and select "Integration" as the category
-6. Click "Add"
-7. Search for "OpenClaw Voice Assistant"
-8. Click "Download"
-9. Restart Home Assistant
+1. Open **HACS → Integrations → ⋮ → Custom repositories**.
+2. Add this repository URL with category **Integration**, then **Add**.
+3. Search for **OpenClaw Voice Assistant** and **Download**.
+4. **Restart Home Assistant.**
 
-### Manual Installation
+> Pre-release builds: enable **Show beta versions** in the integration's HACS page
+> to install beta tags (e.g. `1.7.0-beta.1`).
 
-1. Copy the `custom_components/openclaw` directory to your Home Assistant `custom_components` directory
-2. Restart Home Assistant
+### Manual
 
-## Getting a Gateway Token
+1. Copy `custom_components/openclaw` into your Home Assistant `custom_components`
+   directory.
+2. **Restart Home Assistant.**
 
-A Gateway token is required to authenticate your Home Assistant instance with the Gateway. Since OpenClaw 2026.2.13+, authentication is mandatory for all connections (including localhost).
+### Upgrading from Clawd v1.2.x
 
-**Generate a new token:**
+See [MIGRATION.md](MIGRATION.md) for the step-by-step rename/upgrade guide.
+
+## Configuration
+
+### Getting a Gateway token
+
+Authentication is mandatory for all connections (including localhost) since
+OpenClaw 2026.2.13+.
 
 ```bash
+# Generate a new token
 openclaw doctor --generate-gateway-token
-```
+# → prints e.g. 666c291bc8427a2dfb9e16e8871f2eec59f3e2ffee202a5f
 
-This will output a token like `666c291bc8427a2dfb9e16e8871f2eec59f3e2ffee202a5f`. Copy this value for use in the integration configuration.
-
-**Using an existing token:**
-
-If you've already set a token via environment variable, you can retrieve it:
-
-```bash
+# Or read an existing one from the environment
 echo $OPENCLAW_GATEWAY_TOKEN
 ```
 
-**Starting the Gateway for remote access:**
-
-By default, the Gateway only listens on localhost. To allow connections from Home Assistant on a different machine:
+To allow connections from a Home Assistant instance on another machine, bind the
+gateway to your LAN (and prefer SSL/TLS or an SSH tunnel for anything off-box):
 
 ```bash
 openclaw gateway --bind lan
 ```
 
-This binds the Gateway to your local network interface, allowing connections from other devices on your network.
+### Setup walkthrough
 
-**Security note**: Always use SSL/TLS for remote connections, or use an SSH tunnel. The token should be kept secret as it provides full access to your OpenClaw agent.
+1. **Settings → Devices & Services → Add Integration → "OpenClaw Voice Assistant".**
+2. **Connection** — enter:
+   - **Host** — gateway hostname/IP (e.g. `192.168.1.100`; default `127.0.0.1`)
+   - **Port** — gateway port (default `18789`)
+   - **Gateway Token** — your token (required)
+   - **Use SSL** — enable for `wss://` (recommended for remote)
+   - **Agent Timeout** — max seconds to wait for a reply (default **120**, range 5–300)
+3. **Device approval** (first connect only):
+   - **Local / localhost** → **auto-approved**, setup continues immediately.
+   - **Remote** → a **Device Approval Required** step appears. Approve it, then
+     **Submit**:
+     ```bash
+     openclaw devices list
+     openclaw devices approve <device-id>   # or use the OpenClaw Control UI
+     ```
+     This is a **one-time** step — the device key is persisted and reused on every
+     future connection and restart.
+4. **Session & speech options** — every field here is optional and can be changed
+   later via **Configure**. See the [options reference](#options-reference) for the
+   full list (session, agent, model, thinking, emoji/TTS, and proactive voice).
 
-## Configuration
+### Options reference
 
-### Setting Up the Integration
+All of these are editable any time via **Settings → Devices & Services → OpenClaw
+→ Configure**.
 
-1. Go to **Settings** → **Devices & Services**
-2. Click **Add Integration**
-3. Search for "OpenClaw Voice Assistant"
-4. Enter your Gateway connection details:
-   - **Host**: Gateway hostname or IP address (e.g., `gateway.example.com` or `192.168.1.100`)
-   - **Port**: Gateway port (default: `18789`)
-   - **Gateway Token**: Your authentication token (required)
-   - **Use SSL**: Check this for `wss://` connections (recommended for remote connections)
-   - **Agent Timeout**: Maximum time to wait for agent response in seconds (default: 30)
-5. Click **Submit**
+| Option | Default | Description |
+|---|---|---|
+| **Host** | `127.0.0.1` | Gateway hostname or IP |
+| **Port** | `18789` | Gateway port |
+| **Gateway Token** | — | Authentication token (required) |
+| **Use SSL** | Off | Use `wss://` (recommended for remote) |
+| **Agent Timeout** | `120` s | Max wait for a reply (5–300) |
+| **Session Key** | `main` | OpenClaw session to route HA conversations to |
+| **Agent** | gateway default | Route to a specific gateway agent (keys the session as `agent:<id>:<session>`) |
+| **Model override** | gateway default | Per-integration model (e.g. `anthropic/claude-...`) |
+| **Thinking mode** | gateway default | `off` / `low` / `medium` / `high` |
+| **Strip emojis from TTS** | On | Remove emojis from spoken output |
+| **TTS max characters** | `0` (no limit) | Trim long spoken replies (0–2000) |
+| **Proactive voice** | Off | Let the agent speak first on a satellite |
+| **Satellite to speak on** | — | `assist_satellite` entity used for proactive announcements |
+| **Proactive mode** | `announce` | `announce` (speak) or `start_conversation` (speak + reopen mic) |
 
-#### Device Approval
+### Connect the voice assistant
 
-When connecting for the first time, the integration registers a device identity with your OpenClaw Gateway using an Ed25519 keypair. Depending on your setup:
-
-- **Local connections** (OpenClaw on the same machine / localhost): The device is **auto-approved** — setup proceeds immediately.
-- **Remote connections** (different machines, containers on different IPs): You'll see a **"Device Approval Required"** step. Approve the device in OpenClaw, then click **Submit** to continue:
-
-  ```bash
-  # In the OpenClaw CLI, list pending devices and approve:
-  openclaw devices list
-  openclaw devices approve <device-id>
-  ```
-
-  Or approve via the OpenClaw Control UI.
-
-This is a **one-time step**. The device key is persisted in Home Assistant — future connections and restarts reuse the approved key automatically.
-
-6. Configure session and speech options:
-   - **Session Key**: OpenClaw session to use (default: `main` - the standard direct-chat session)
-   - **Strip emojis from TTS speech**: Remove emojis from spoken responses (default: enabled)
-7. Click **Submit**
-
-### Configuring Voice Assistant
-
-1. Go to **Settings** → **Voice Assistants** → **Assist**
-2. Select your preferred voice assistant
-3. Under **Conversation agent**, select **OpenClaw**
-4. Save changes
+1. **Settings → Voice Assistants → Assist** (or your pipeline of choice).
+2. Under **Conversation agent**, select **OpenClaw**.
+3. Save.
 
 ## Usage
 
-Once configured, your Home Assistant voice assistant connects directly to your OpenClaw agent:
+- **Voice** — any HA voice interface (mobile app, Voice PE / `assist_satellite`,
+  etc.).
+- **Text** — the Assist box in the HA UI.
+- **Automations** — call the agent programmatically (see below).
 
-- **Voice Commands**: Use any Home Assistant voice interface (mobile app, voice satellites, etc.)
-- **Assist Interface**: Type or speak to your OpenClaw through the Home Assistant UI
-- **Full Agent Access**: Your OpenClaw can check emails, manage calendar, access files, browse web, and use all configured integrations
-- **Natural Conversations**: Multi-turn conversations with persistent memory and context
-- **Secure Communication**: All requests sent securely to your OpenClaw Gateway's agent endpoint
+### Example interactions
 
-### Example Interactions
-
-Your OpenClaw can handle a wide variety of requests through Home Assistant voice interface:
-
-**Email & Communication:**
+**Email & communication**
 - "Do I have any important emails from [person]?"
 - "Send an email to [person] about tomorrow's meeting"
-- "What messages are in my inbox?"
-- "Who sent me a telegram message?"
+- "Who sent me a Telegram message?"
 
-**Calendar & Scheduling:**
+**Calendar & scheduling**
 - "What's on my calendar today?"
-- "When is my next meeting?"
-- "Add a dentist appointment for next Tuesday at 2pm"
-- "Check me in for my flight tomorrow"
+- "Add a dentist appointment next Tuesday at 2pm"
 
-**Information & Web:**
+**Information & web**
 - "Search for restaurants near me"
-- "What's the weather forecast for this week?"
-- "Look up the latest news about [topic]"
 - "Browse to [website] and summarize the main article"
 
-**Files & Documents:**
+**Files & notes**
 - "Find my notes about [topic]"
-- "What's in my [filename] file?"
 - "Save this to my notes: [content]"
 
-**Conversational & Knowledge:**
-- "Who are you?"
-- "Explain how photosynthesis works"
-- "What's 2 plus 2?"
-- "Tell me a joke"
+**Conversational**
+- "Who are you?", "Explain how photosynthesis works", "Tell me a joke"
 
-**Custom Skills:**
-- Any custom skills or integrations you've configured in OpenClaw
+> Exact capabilities depend on your OpenClaw configuration, skills, and service
+> integrations. For simple device control ("turn on the lights"), prefer Home
+> Assistant's built-in intents — see [Limitations](#limitations).
 
-**Note**: The exact capabilities depend on your OpenClaw configuration, installed skills, and service integrations. For basic home automation commands like "turn on the lights", you may want to use Home Assistant's built-in intents alongside OpenClaw for the best experience.
+### Call the agent from automations
 
-## Remote Gateway Setup
+The conversation entity is callable from any script or automation via
+`conversation.process` — ask the agent something on a schedule and act on the
+reply (e.g. a spoken morning briefing):
 
-If your OpenClaw Gateway is running on a different machine, you have two options:
+```yaml
+action: conversation.process
+data:
+  # Your OpenClaw conversation entity id — find it in Developer Tools → States.
+  agent_id: conversation.openclaw
+  text: "Give me a one-sentence summary of today's calendar."
+response_variable: result
 
-### Option 1: Direct Connection (Recommended with SSL)
+# …then, for example, speak it:
+action: assist_satellite.announce
+target:
+  entity_id: assist_satellite.kitchen
+data:
+  message: "{{ result.response.speech.plain.speech }}"
+```
 
-Configure the integration with your Gateway's hostname/IP and enable SSL:
-- Host: `gateway.example.com` or IP address
-- Port: `18789`
-- Use SSL: ✓ (enabled)
-- Gateway Token: Required
+## Feature guides
 
-On first connection, you'll need to approve the device in OpenClaw (one-time step). See [Device Approval](#device-approval) above.
+### Multi-turn voice
 
-### Option 2: SSH Tunnel
+When the agent's reply asks a follow-up question, the integration sets
+`continue_conversation` so the satellite **keeps its mic open** — you can answer
+without saying the wake word again. It works automatically, requires no
+configuration, and falls back cleanly on HA versions that don't support the flag.
 
-Set up an SSH tunnel separately and connect via localhost:
+### Proactive voice
+
+By default the assistant only speaks when spoken to. **Proactive voice** (opt-in)
+lets the agent speak *first* on a satellite — announcing a reminder, telling you a
+background task finished, or asking a follow-up.
+
+Enable it under **Configure**:
+
+- **Proactive voice** — turn it on (off by default).
+- **Satellite to speak on** — the `assist_satellite` entity (e.g. Voice PE).
+- **Proactive mode**:
+  - `announce` — speak the message.
+  - `start_conversation` — speak it **and** reopen the mic for your reply.
+
+Replies you trigger yourself are never re-announced — only agent-*initiated* turns
+are.
+
+> **It needs a trigger.** Proactive voice is a *delivery* mechanism: it speaks when
+> the gateway produces a proactive turn — an agent **cron job**, a **background
+> task**, or the agent choosing to message you. With none of those configured on
+> the OpenClaw side, you won't hear anything. Set up agent reminders/cron in
+> OpenClaw to give it something to say.
+
+### Sessions & agent routing
+
+The **Session Key** routes HA conversations to a specific OpenClaw session:
+
+- **`main`** (default) — the standard direct-chat session.
+- **Custom** — isolate or organize HA conversations (e.g. `voice-assistant`,
+  `automation`).
+
+Switch sessions dynamically without reconfiguring via `openclaw.set_session` (see
+[Services](#services)). If you run **multiple agents**, set the **Agent** option to
+route to one; the session is then keyed as `agent:<id>:<session>`.
+
+### Model & thinking overrides
+
+Set **Model override** and **Thinking mode** under **Configure** to use a specific
+model or reasoning depth for requests from this integration, independent of your
+other OpenClaw channels.
+
+### Emoji stripping
+
+**Strip emojis from TTS speech** (default **on**) removes emojis from spoken output
+for cleaner TTS:
+
+- "I'm Claude 🦞" → speaks "I'm Claude" (emoji still visible in chat history).
+- Disable it if your TTS engine handles emojis well, or if you mostly use the text
+  Assist box.
+
+### TTS response trimming
+
+**TTS max characters** caps spoken replies:
+
+- **`0`** (default) — no limit.
+- **`> 0`** — trim to that many characters (an ellipsis is added when trimmed).
+
+### Voice-optimized session
+
+For the most natural voice experience, point the integration at a dedicated
+OpenClaw session whose system prompt is tuned for speech:
+
+```
+You are a voice assistant for a smart home. Keep responses:
+- Brief and conversational (1–3 sentences when possible)
+- Natural for text-to-speech (no bullet points, formatting, or code blocks)
+- Free of emojis and special characters
+- Direct and to the point
+When performing tasks (email, calendar, …), confirm the action briefly.
+```
+
+Then set **Session Key** to that session under **Configure**. Your other OpenClaw
+channels (Telegram, Discord, …) keep their own settings. See the
+[OpenClaw docs](https://docs.openclaw.ai/) for configuring sessions and prompts.
+
+### Multiple gateways
+
+Add more than one gateway — each needs a unique `host:port`. You get a separate
+conversation entity and device per gateway, and can assign different agents to
+different voice pipelines.
+
+## Remote gateway setup
+
+### Option 1 — direct connection (recommended, with SSL)
+
+- Host: `gateway.example.com` or IP · Port: `18789` · **Use SSL: ✓** · Token: required
+- Approve the device once in OpenClaw on first connect (see
+  [Setup walkthrough](#setup-walkthrough)).
+
+### Option 2 — SSH tunnel
 
 ```bash
-# Set up SSH tunnel (run this command on your Home Assistant machine)
+# Run on the Home Assistant machine
 ssh -N -L 18789:localhost:18789 user@gateway-host
 ```
 
-Then configure the integration:
-- Host: `127.0.0.1`
-- Port: `18789`
-- Gateway Token: Required
-
-**Note**: When using an SSH tunnel, the connection appears as localhost to OpenClaw, so device pairing is typically auto-approved.
+Then configure Host `127.0.0.1`, Port `18789`, token required. Over the tunnel the
+connection looks local to OpenClaw, so device pairing is typically auto-approved.
 
 ## Troubleshooting
 
-### Connection Errors
+**Cannot reach the gateway**
+- Confirm it's running: `openclaw status`. Verify host/port and firewall. Enable
+  SSL if the remote requires it.
 
-**Cannot reach OpenClaw Gateway:**
-- Check that the Gateway is running: `openclaw status`
-- Verify the host and port are correct
-- Check firewall rules
-- For remote connections, ensure SSL is enabled if required
+**Authentication failed / invalid token**
+- Re-check the token (`echo $OPENCLAW_GATEWAY_TOKEN`) or generate a new one
+  (`openclaw doctor --generate-gateway-token`) and update it under **Configure**.
 
-**Authentication failed — invalid token:**
-- Verify your Gateway token is correct
-- Check Gateway token configuration: `echo $OPENCLAW_GATEWAY_TOKEN`
-- Generate a new token if needed: `openclaw doctor --generate-gateway-token`
+**Device approval required**
+- Appears on first connect from a **remote** machine. Approve with
+  `openclaw devices approve <device-id>` (or the Control UI), then **Submit**.
+  One-time only.
 
-**Device approval required:**
-- This appears when connecting from a remote machine (not localhost) for the first time
-- Approve the device in OpenClaw: `openclaw devices approve <device-id>` or via the Control UI
-- Click **Submit** in Home Assistant after approving
-- This is a one-time step — the device key is persisted for future connections
+**Device pairing required (repair issue)**
+- If a previously approved device loses pairing (e.g. an OpenClaw data reset), a
+  repair issue appears. Re-approve in OpenClaw, then reload the integration.
 
-**Device pairing required (repair issue):**
-- If a previously approved device loses pairing (e.g., OpenClaw data reset), a repair issue appears
-- Re-approve the device in OpenClaw, then reload the integration
+**Response timeout**
+- The reply took longer than the timeout (default **120s**). Increase **Agent
+  Timeout** under **Configure** for complex tasks, and check gateway logs.
 
-**Response timeout:**
-- Agent execution is taking longer than the configured timeout (default: 30 seconds)
-- Typical response time is 5-10 seconds for most queries
-- Complex questions may take longer (up to 30+ seconds)
-- Increase the timeout setting in integration options if needed
-- Check Gateway logs for issues
+**Protocol mismatch**
+- Means the integration and gateway speak different protocol versions. Update both
+  the integration (HACS) and OpenClaw to current releases.
 
-### Diagnostics
-
-Home Assistant provides a diagnostics panel for the integration:
-
-- Go to **Settings** → **Devices & Services** → **OpenClaw** → **Diagnostics**
-- Includes connection status, health info, and redacted configuration
-
-### Debug Logging
-
-To enable debug logging for the integration, add this to your `configuration.yaml`:
-
-```yaml
-logger:
-  logs:
-    custom_components.openclaw: debug
-```
-
-**Note**: The logger name is `custom_components.openclaw` (not `openclaw-homeassistant`).
-
-### Performance Issues
-
-**Slow responses:**
-- Most queries respond in 5-10 seconds
-- Complex reasoning or long responses may take 15-30+ seconds
-- This is normal for AI agent processing
-- Consider increasing the timeout for complex queries
-
-**Connection drops:**
-- Check network stability
-- The integration will automatically reconnect
-- Check Gateway logs for any issues
+**Diagnostics & logs**
+- Download diagnostics: **Settings → Devices & Services → OpenClaw → ⋮ →
+  Download diagnostics**.
+- Enable debug logging:
+  ```yaml
+  logger:
+    logs:
+      custom_components.openclaw: debug
+  ```
+  (The logger name is `custom_components.openclaw`.)
 
 ## Limitations
 
-- **Response time**: Typical queries take 5-10 seconds. Agent tasks (emails, web browsing, file access) may take longer depending on complexity. This is slower than traditional rule-based voice assistants (1-2 seconds) but provides significantly more capability
-- **Streaming**: Streams partial responses when Home Assistant supports streaming; older versions fall back to buffered responses
-- **Home Automation**: Best used alongside Home Assistant's native intents for device control. Your OpenClaw excels at information, complex tasks, email/calendar management, and agentic workflows rather than simple "turn on the lights" commands
-- **Context**: Conversation history within Home Assistant is managed by ChatLog. Your OpenClaw's persistent memory across all platforms remains intact
-- **Capabilities**: What your voice assistant can do depends entirely on your OpenClaw configuration, installed skills, and service integrations
+- **Response time** — typical queries take 5–10s; agent tasks (email, web, files)
+  can take 15–30s+. That's slower than rule-based assistants (1–2s) but far more
+  capable.
+- **Device control** — the agent excels at information, tasks, and agentic
+  workflows. For simple control ("turn on the lights"), Home Assistant's **native
+  intents** are faster and more reliable; run them alongside OpenClaw.
+- **Context** — in-HA conversation history is managed by HA's ChatLog; OpenClaw's
+  own cross-platform memory is unaffected.
+- **Proactive voice** — only speaks when the gateway produces a proactive turn (see
+  [Proactive voice](#proactive-voice)), and requires an `assist_satellite` entity.
 
 ## Security
 
-- **Two-factor authentication**: Connections use both a Gateway token and an Ed25519 device keypair for authentication
-- **Device identity**: Each Home Assistant instance registers a unique Ed25519 keypair with the Gateway, proving device identity on every connection
-- **Token storage**: Tokens and device keys are encrypted at rest by Home Assistant
-- **Pairing approval**: Remote devices require one-time approval in OpenClaw before they can operate (local connections are auto-approved)
-- **SSL/TLS**: Recommended for all remote connections
-- **SSH tunnels**: Can be used as an alternative to direct connections
-- **Non-SSL warning**: The integration warns when connecting to non-localhost without SSL
+- **Two-factor** — every connection uses both a Gateway token and a unique Ed25519
+  device keypair.
+- **Encrypted at rest** — tokens and device keys are stored encrypted by Home
+  Assistant.
+- **Pairing approval** — remote devices require one-time approval; local
+  connections auto-approve.
+- **Transport** — use SSL/TLS (or an SSH tunnel) for anything off-box; the
+  integration warns when connecting to a non-localhost host without SSL.
+- The token grants full access to your agent — keep it secret.
 
-## Advanced Configuration
+## Contributing
 
-### Updating Settings
+Issues and PRs welcome. See [ROADMAP.md](ROADMAP.md) for what's shipped and what's
+being considered, [GATEWAY_API.md](GATEWAY_API.md) for the Gateway API reference,
+and [AGENTS.md](AGENTS.md) for tuning agents for voice. Keep behavior changes
+opt-in or clearly called out — don't change defaults for existing users without a
+note.
 
-You can update the Gateway connection settings without removing the integration:
+## Credits & support
 
-1. Go to **Settings** → **Devices & Services**
-2. Find the **OpenClaw Voice Assistant** integration
-3. Click **Configure**
-4. Update settings as needed
-5. Click **Submit**
-
-### Reconnect Service
-
-If the Gateway connection gets stuck, you can force a reconnect:
-
-- Service: `openclaw.reconnect`
-- Optional field: `entry_id` (reconnect a specific entry; omit to reconnect all)
-
-### Session Keys
-
-The **Session Key** setting allows you to route Home Assistant conversations to specific OpenClaw sessions:
-
-- **Default (`main`)**: The standard direct-chat session - conversations appear in your main OpenClaw session
-- **Custom sessions**: Use a different session key to organize Home Assistant conversations separately
-- **Use cases**:
-  - Keep Home Assistant conversations isolated from other OpenClaw interactions
-  - Route to different agents if you have multiple configured
-  - Organize conversations by purpose (e.g., `home-assistant`, `automation`, etc.)
-
-To use a custom session, simply enter the desired session key in the integration configuration.
-
-You can also switch sessions dynamically with the `openclaw.set_session` service:
-
-```yaml
-service: openclaw.set_session
-data:
-  session_key: "voice-assistant"
-```
-
-This updates the active session for new requests until the integration reloads or is reconfigured.
-
-### Voice-Optimized Session Configuration
-
-For the best voice assistant experience, you can configure a dedicated OpenClaw session with a system prompt optimized for spoken responses. This keeps responses brief and TTS-friendly.
-
-**Step 1: Create a voice-optimized session in OpenClaw**
-
-In your OpenClaw configuration, create a new session with a system prompt like:
-
-```
-You are a voice assistant for a smart home. Keep your responses:
-- Brief and conversational (1-3 sentences when possible)
-- Natural for text-to-speech (avoid bullet points, formatting, code blocks)
-- Free of emojis and special characters
-- Direct and to the point
-
-When performing tasks (emails, calendar, etc.), confirm the action briefly rather than explaining in detail.
-```
-
-Refer to the [OpenClaw documentation](https://docs.openclaw.ai/) for details on configuring custom sessions and system prompts.
-
-**Step 2: Use the session in Home Assistant**
-
-1. Go to **Settings** → **Devices & Services** → **OpenClaw** → **Configure**
-2. Set the **Session Key** to your voice-optimized session name (e.g., `voice-assistant`)
-3. Click **Submit**
-
-Now all voice commands through Home Assistant will use your voice-optimized configuration, while other OpenClaw interfaces (Telegram, Discord, etc.) continue using their own settings.
-
-### Proactive Voice
-
-By default the assistant only speaks when spoken to. **Proactive voice** (opt-in)
-lets the agent speak *first* on a satellite — for example announcing a reminder,
-telling you a background task has finished, or asking a follow-up.
-
-Enable it in **Settings** → **Devices & Services** → **OpenClaw** → **Configure**:
-
-- **Proactive voice**: turn the feature on (off by default).
-- **Satellite to speak on**: the `assist_satellite` entity to play announcements on
-  (e.g. a Home Assistant Voice PE).
-- **Proactive mode**:
-  - `announce` — speak the message.
-  - `start_conversation` — speak the message *and* re-open the mic so you can
-    reply without the wake word.
-
-Replies you trigger yourself are never re-announced — only agent-*initiated* turns are.
-
-> **Note:** this is a *delivery* mechanism. It only speaks when the gateway side
-> produces a proactive turn — e.g. an agent **cron job**, a **background task**, or
-> the agent choosing to message you. If you have none of those configured on the
-> OpenClaw side, you won't hear anything. Set up agent reminders/cron in OpenClaw to
-> give it something to say.
-
-> **Tip (no extra setup):** the conversation entity is callable from any automation
-> via the `conversation.process` service — ask the agent a question on a schedule and
-> act on its reply (e.g. announce a morning briefing).
-
-### Emoji Stripping
-
-The **Strip emojis from TTS speech** option controls whether emojis are removed from spoken responses:
-
-- **Enabled (default)**: Emojis are removed from text-to-speech output for cleaner speech
-  - Example: "I'm Claude 🦞" → Speaks "I'm Claude"
-  - Emojis remain visible in the conversation history
-- **Disabled**: TTS attempts to read emojis (may sound awkward depending on your TTS engine)
-  - Example: "I'm Claude 🦞" → Speaks "I'm Claude lobster emoji"
-
-**When to disable:**
-- You have a high-quality TTS engine that handles emojis well
-- You prefer emoji descriptions to be spoken
-- You're using the integration primarily through text (Assist interface) rather than voice
-
-You can change this setting anytime in **Settings** → **Devices & Services** → **OpenClaw** → **Configure**.
-
-### TTS Response Trimming
-
-The **TTS max characters** option caps spoken responses for long replies:
-
-- **0 (default)**: No limit
-- **> 0**: Trim TTS to the specified character count (adds "..." when trimmed)
-
-### Multiple Gateways
-
-You can add multiple Gateway connections if needed:
-- Each Gateway requires a unique host:port combination
-- Configure multiple conversation entities
-- Select different agents in different voice assistant configurations
+- **OpenClaw** — open-source local AI agent system · [openclaw.ai](https://openclaw.ai/)
+  · [docs](https://docs.openclaw.ai/)
+- **This integration** — community Home Assistant integration for the OpenClaw
+  Gateway, maintained by [@ddrayne](https://github.com/ddrayne). Thanks to
+  contributors [@IsakCode222](https://github.com/IsakCode222) (multi-turn voice)
+  and [@thezapalsky](https://github.com/thezapalsky) (action-run responses).
+- **Support** — [GitHub Issues](https://github.com/ddrayne/openclaw-homeassistant/issues)
+  · [Home Assistant Community](https://community.home-assistant.io/)
 
 ## License
 
-Apache License 2.0 - See LICENSE file for details
-
-## Credits
-
-- **OpenClaw**: Open-source AI agent system by Anthropic - [openclaw.ai](https://openclaw.ai/)
-- **Integration**: Home Assistant conversation entity integration for OpenClaw Gateway
-
-## Support
-
-- **Integration Issues**: [GitHub Issues](https://github.com/ddrayne/openclaw-homeassistant/issues)
-- **OpenClaw Website**: [https://openclaw.ai/](https://openclaw.ai/)
-- **OpenClaw Documentation**: [https://docs.openclaw.ai/](https://docs.openclaw.ai/)
-- **Home Assistant Community**: [https://community.home-assistant.io/](https://community.home-assistant.io/)
+Apache License 2.0 — see [LICENSE](LICENSE).
