@@ -1,5 +1,6 @@
 """Conversation entity for OpenClaw integration."""
 
+import asyncio
 import dataclasses
 import logging
 import re
@@ -9,15 +10,24 @@ from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    BACKGROUND_ERROR_PHRASE,
+    BACKGROUND_TIMEOUT_PHRASE,
+    CONF_BACKGROUND_ENABLED,
+    CONF_BACKGROUND_GRACE,
+    CONF_HOLDING_PHRASE,
     CONF_PROACTIVE_ENABLED,
     CONF_PROACTIVE_MODE,
     CONF_PROACTIVE_SATELLITE,
     CONF_STRIP_EMOJIS,
     CONF_TTS_MAX_CHARS,
+    DEFAULT_BACKGROUND_ENABLED,
+    DEFAULT_BACKGROUND_GRACE,
+    DEFAULT_HOLDING_PHRASE,
     DEFAULT_PROACTIVE_ENABLED,
     DEFAULT_PROACTIVE_MODE,
     DEFAULT_STRIP_EMOJIS,
@@ -31,7 +41,7 @@ from .exceptions import (
     GatewayConnectionError,
     GatewayTimeoutError,
 )
-from .gateway_client import OpenClawGatewayClient
+from .gateway_client import AgentRun, OpenClawGatewayClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -113,6 +123,8 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         self._gateway_client = gateway_client
         self._attr_unique_id = config_entry.entry_id
         self._attr_supports_streaming = self._supports_streaming_result()
+        # Runs detached past the grace period, reporting back via announce.
+        self._background_tasks: set[asyncio.Task] = set()
 
     async def async_added_to_hass(self) -> None:
         """Register the proactive-voice handler when enabled."""
@@ -124,18 +136,28 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             )
 
     async def async_will_remove_from_hass(self) -> None:
-        """Stop receiving proactive announcements."""
+        """Stop receiving proactive announcements and drop background runs."""
         self._gateway_client.clear_proactive_handler()
+        for task in self._background_tasks:
+            task.cancel()
+        self._background_tasks.clear()
         await super().async_will_remove_from_hass()
 
     def _on_proactive_message(self, text: str) -> None:
         """Schedule a satellite announcement (called from the event loop)."""
         self.hass.async_create_task(self._async_announce(text))
 
-    async def _async_announce(self, text: str) -> None:
-        """Speak an agent-initiated message on the configured satellite."""
+    async def _async_announce(
+        self, text: str, satellite: str | None = None
+    ) -> None:
+        """Speak an agent-initiated message on a satellite.
+
+        Defaults to the configured proactive satellite; background reports
+        pass the originating satellite explicitly.
+        """
         config = {**self._config_entry.data, **self._config_entry.options}
-        satellite = config.get(CONF_PROACTIVE_SATELLITE)
+        if satellite is None:
+            satellite = config.get(CONF_PROACTIVE_SATELLITE)
         if not satellite:
             _LOGGER.warning(
                 "Proactive voice enabled but no satellite configured"
@@ -256,6 +278,12 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         user_message = user_input.text
 
         try:
+            config = {**self._config_entry.data, **self._config_entry.options}
+            if config.get(CONF_BACKGROUND_ENABLED, DEFAULT_BACKGROUND_ENABLED):
+                return await self._handle_with_grace(
+                    user_input, chat_log, user_message, config
+                )
+
             streaming_result = self._build_streaming_result(
                 user_input, chat_log, user_message
             )
@@ -265,19 +293,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             response_text = await self._gateway_client.send_agent_request(
                 user_message
             )
-            intent_response = intent.IntentResponse(language=user_input.language)
-            self._finalize_response(
-                user_input, chat_log, response_text, intent_response
-            )
-
-            result = conversation.ConversationResult(
-                response=intent_response,
-                conversation_id=user_input.conversation_id,
-            )
-            _set_continue_conversation(
-                result, response_expects_followup(response_text)
-            )
-            return result
+            return self._build_plain_result(user_input, chat_log, response_text)
 
         except GatewayAuthenticationError as err:
             _LOGGER.error("Gateway authentication error: %s", err)
@@ -320,11 +336,167 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
                 chat_log,
             )
 
+    def _build_plain_result(
+        self,
+        user_input: conversation.ConversationInput,
+        chat_log: conversation.ChatLog,
+        response_text: str,
+    ) -> conversation.ConversationResult:
+        """Build a completed (non-streaming) conversation result."""
+        intent_response = intent.IntentResponse(language=user_input.language)
+        self._finalize_response(
+            user_input, chat_log, response_text, intent_response
+        )
+        result = conversation.ConversationResult(
+            response=intent_response,
+            conversation_id=user_input.conversation_id,
+        )
+        _set_continue_conversation(
+            result, response_expects_followup(response_text)
+        )
+        return result
+
+    async def _handle_with_grace(
+        self,
+        user_input: conversation.ConversationInput,
+        chat_log: conversation.ChatLog,
+        user_message: str,
+        config: dict[str, Any],
+    ) -> conversation.ConversationResult:
+        """Race the agent run against the grace period.
+
+        First content within the grace period answers inline exactly as
+        before; a silent run is detached to a background task that announces
+        its result on the originating satellite when it finishes.
+        """
+        grace = config.get(CONF_BACKGROUND_GRACE, DEFAULT_BACKGROUND_GRACE)
+        agent_run = await self._gateway_client.begin_agent_run(user_message)
+
+        try:
+            first_chunk = await agent_run.get_chunk(grace)
+        except asyncio.TimeoutError:
+            return self._defer_to_background(
+                user_input, chat_log, agent_run, config
+            )
+
+        streaming_result = self._build_streaming_result(
+            user_input,
+            chat_log,
+            user_message,
+            chunk_source=self._resume_stream(agent_run, first_chunk),
+        )
+        if streaming_result is not None:
+            return streaming_result
+
+        # No streaming support: drain to completion and answer plainly.
+        chunks = [first_chunk] if first_chunk else []
+        async for chunk in self._gateway_client.stream_run(agent_run):
+            chunks.append(chunk)
+        response_text = agent_run.get_response() or "".join(chunks)
+        return self._build_plain_result(user_input, chat_log, response_text)
+
+    async def _resume_stream(
+        self, agent_run: AgentRun, first_chunk: str | None
+    ) -> AsyncIterator[str]:
+        """Re-yield the peeked first chunk, then the rest of the run."""
+        if first_chunk:
+            yield first_chunk
+        async for chunk in self._gateway_client.stream_run(agent_run):
+            yield chunk
+
+    def _defer_to_background(
+        self,
+        user_input: conversation.ConversationInput,
+        chat_log: conversation.ChatLog,
+        agent_run: AgentRun,
+        config: dict[str, Any],
+    ) -> conversation.ConversationResult:
+        """End the turn with a holding phrase; report back when the run ends."""
+        _LOGGER.debug(
+            "Run %s silent past grace period; deferring to background",
+            agent_run.run_id,
+        )
+        report = self._background_report(
+            agent_run, getattr(user_input, "device_id", None)
+        )
+        create_background_task = getattr(
+            self.hass, "async_create_background_task", None
+        )
+        if create_background_task is not None:
+            task = create_background_task(
+                report, name=f"openclaw_background_{agent_run.run_id}"
+            )
+        else:
+            # Older HA cores predate background tasks; a plain task still
+            # completes the report, it just isn't shielded from shutdown.
+            task = self.hass.async_create_task(report)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+        holding_phrase = config.get(CONF_HOLDING_PHRASE, DEFAULT_HOLDING_PHRASE)
+        return self._build_plain_result(user_input, chat_log, holding_phrase)
+
+    async def _background_report(
+        self, agent_run: AgentRun, device_id: str | None
+    ) -> None:
+        """Drain a detached run and announce its result on a satellite."""
+        try:
+            async for _chunk in self._gateway_client.stream_run(agent_run):
+                pass
+            text = agent_run.get_response()
+        except GatewayTimeoutError:
+            _LOGGER.warning("Background run %s timed out", agent_run.run_id)
+            text = BACKGROUND_TIMEOUT_PHRASE
+        except asyncio.CancelledError:
+            raise
+        except AgentExecutionError as err:
+            _LOGGER.error("Background run %s failed: %s", agent_run.run_id, err)
+            text = BACKGROUND_ERROR_PHRASE
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected error in background run %s", agent_run.run_id)
+            text = BACKGROUND_ERROR_PHRASE
+
+        if not text:
+            _LOGGER.debug(
+                "Background run %s finished with no text to announce",
+                agent_run.run_id,
+            )
+            return
+
+        satellite = self._resolve_report_satellite(device_id)
+        if not satellite:
+            _LOGGER.warning(
+                "Background run %s finished but no satellite to announce on "
+                "(no assist_satellite on the originating device and no "
+                "proactive satellite configured)",
+                agent_run.run_id,
+            )
+            return
+        await self._async_announce(text, satellite=satellite)
+
+    def _resolve_report_satellite(self, device_id: str | None) -> str | None:
+        """Pick the satellite to report on: origin device, else proactive."""
+        if device_id:
+            try:
+                registry = er.async_get(self.hass)
+                for entry in er.async_entries_for_device(registry, device_id):
+                    if entry.domain == "assist_satellite":
+                        return entry.entity_id
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.debug(
+                    "Could not resolve satellite for device %s",
+                    device_id,
+                    exc_info=True,
+                )
+        config = {**self._config_entry.data, **self._config_entry.options}
+        return config.get(CONF_PROACTIVE_SATELLITE)
+
     def _build_streaming_result(
         self,
         user_input: conversation.ConversationInput,
         chat_log: conversation.ChatLog,
         user_message: str,
+        chunk_source: AsyncIterator[str] | None = None,
     ) -> conversation.ConversationResult | None:
         """Build a streaming conversation result when supported."""
         if not self._supports_streaming_result():
@@ -340,7 +512,12 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         # replacement built by the StreamingConversationResult fallback.
         result_ref: list[conversation.ConversationResult] = [result]
         response_stream = self._stream_response(
-            user_input, chat_log, user_message, intent_response, result_ref
+            user_input,
+            chat_log,
+            user_message,
+            intent_response,
+            result_ref,
+            chunk_source,
         )
 
         try:
@@ -397,14 +574,17 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         user_message: str,
         intent_response: intent.IntentResponse,
         result_ref: list[conversation.ConversationResult],
+        chunk_source: AsyncIterator[str] | None = None,
     ) -> AsyncIterator[str]:
         """Stream response chunks from the Gateway."""
+        if chunk_source is None:
+            chunk_source = self._gateway_client.stream_agent_request(
+                user_message
+            )
         chunks: list[str] = []
         had_content = False
         try:
-            async for chunk in self._gateway_client.stream_agent_request(
-                user_message
-            ):
+            async for chunk in chunk_source:
                 if chunk:
                     chunks.append(chunk)
                     had_content = True

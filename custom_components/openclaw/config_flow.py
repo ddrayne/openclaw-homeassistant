@@ -15,6 +15,9 @@ from homeassistant.helpers import aiohttp_client, selector
 
 from .const import (
     CONF_AGENT_ID,
+    CONF_BACKGROUND_ENABLED,
+    CONF_BACKGROUND_GRACE,
+    CONF_HOLDING_PHRASE,
     CONF_MODEL,
     CONF_PROACTIVE_ENABLED,
     CONF_PROACTIVE_MODE,
@@ -25,6 +28,9 @@ from .const import (
     CONF_TTS_MAX_CHARS,
     CONF_USE_SSL,
     DEFAULT_AGENT_ID,
+    DEFAULT_BACKGROUND_ENABLED,
+    DEFAULT_BACKGROUND_GRACE,
+    DEFAULT_HOLDING_PHRASE,
     DEFAULT_HOST,
     DEFAULT_MODEL,
     DEFAULT_PORT,
@@ -153,6 +159,34 @@ def _build_thinking_selector() -> selector.SelectSelector:
     )
 
 
+def _background_schema_fields(current: dict[str, Any] | None = None) -> dict:
+    """Background-work fields for the options form.
+
+    When a request produces no content within the grace period, the entity
+    speaks the holding phrase and announces the result later instead of
+    timing out.
+    """
+    current = current or {}
+    return {
+        vol.Optional(
+            CONF_BACKGROUND_ENABLED,
+            default=current.get(
+                CONF_BACKGROUND_ENABLED, DEFAULT_BACKGROUND_ENABLED
+            ),
+        ): bool,
+        vol.Optional(
+            CONF_BACKGROUND_GRACE,
+            default=current.get(
+                CONF_BACKGROUND_GRACE, DEFAULT_BACKGROUND_GRACE
+            ),
+        ): vol.All(int, vol.Range(min=3, max=60)),
+        vol.Optional(
+            CONF_HOLDING_PHRASE,
+            default=current.get(CONF_HOLDING_PHRASE, DEFAULT_HOLDING_PHRASE),
+        ): str,
+    }
+
+
 def _proactive_schema_fields(current: dict[str, Any] | None = None) -> dict:
     """Shared opt-in proactive-voice fields for the setup and options forms."""
     current = current or {}
@@ -251,7 +285,7 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): bool,
                 vol.Optional(
                     CONF_TIMEOUT, default=DEFAULT_TIMEOUT
-                ): vol.All(int, vol.Range(min=5, max=300)),
+                ): vol.All(int, vol.Range(min=5, max=600)),
             }
         )
 
@@ -515,7 +549,7 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_TIMEOUT,
                     default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
-                ): vol.All(int, vol.Range(min=5, max=300)),
+                ): vol.All(int, vol.Range(min=5, max=600)),
                 vol.Optional(
                     CONF_SESSION_KEY, default=current_session
                 ): session_selector,
@@ -532,6 +566,7 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS
                     ),
                 ): vol.All(int, vol.Range(min=0, max=2000)),
+                **_background_schema_fields(current),
                 **_proactive_schema_fields(current),
             }
         )

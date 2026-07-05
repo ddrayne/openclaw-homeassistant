@@ -34,6 +34,9 @@ class AgentRun:
             asyncio.Queue() if stream else None
         )
         self._streamed_any = False
+        # Set once the completion sentinel has been dequeued, so a consumer
+        # that peeked the sentinel (grace race) doesn't wait for a second one.
+        self._stream_done = False
 
     def add_output(self, output: str) -> None:
         """Add output to buffer. Gateway sends cumulative text, extract only new chars."""
@@ -98,6 +101,22 @@ class AgentRun:
             return self.summary
         return self._full_text
 
+    async def get_chunk(self, timeout: float) -> str | None:
+        """Await the next streamed chunk; None is the completion sentinel.
+
+        Used to peek for first content during the grace race. Raises
+        asyncio.TimeoutError when nothing arrives in time — safe to cancel:
+        a queued item is never lost by a cancelled get().
+        """
+        if self._stream_queue is None:
+            self._stream_queue = asyncio.Queue()
+        if self._stream_done:
+            return None
+        chunk = await asyncio.wait_for(self._stream_queue.get(), timeout=timeout)
+        if chunk is None:
+            self._stream_done = True
+        return chunk
+
     async def iter_stream(self, timeout: float) -> AsyncIterator[str]:
         """Yield output chunks until completion or timeout.
 
@@ -107,7 +126,7 @@ class AgentRun:
         if self._stream_queue is None:
             self._stream_queue = asyncio.Queue()
 
-        while True:
+        while not self._stream_done:
             try:
                 chunk = await asyncio.wait_for(
                     self._stream_queue.get(), timeout=timeout
@@ -117,6 +136,7 @@ class AgentRun:
                     "Agent response timeout"
                 ) from err
             if chunk is None:
+                self._stream_done = True
                 break
             yield chunk
 
@@ -355,6 +375,49 @@ class OpenClawGatewayClient:
             )
             raise AgentExecutionError(str(err)) from err
 
+    async def begin_agent_run(
+        self, message: str, idempotency_key: str | None = None
+    ) -> AgentRun:
+        """Start an agent run without consuming it.
+
+        Chunks buffer in the run's stream queue from this moment; consume them
+        with stream_run(). Splitting start from consumption lets the caller
+        race the run against a grace timer and hand it off to a background
+        consumer without cancelling a generator mid-flight.
+        """
+        if idempotency_key is None:
+            idempotency_key = str(uuid.uuid4())
+        _LOGGER.debug("Beginning agent run with key: %s", idempotency_key)
+        return await self._start_agent_run(message, idempotency_key, stream=True)
+
+    async def stream_run(self, agent_run: AgentRun) -> AsyncIterator[str]:
+        """Consume an already-started run: yield chunks, raise on failure.
+
+        Exactly one consumer per run — this owns cleanup of the run tracker.
+
+        Raises:
+            GatewayTimeoutError: If the per-chunk timeout expires
+            AgentExecutionError: If agent execution fails
+        """
+        try:
+            async for chunk in agent_run.iter_stream(self._timeout):
+                yield chunk
+
+            if agent_run.status == "ok":
+                return
+
+            if agent_run.status == "error":
+                raise AgentExecutionError(
+                    f"Agent execution failed: {agent_run.summary}"
+                )
+
+            raise AgentExecutionError(
+                f"Unknown agent status: {agent_run.status}"
+            )
+
+        finally:
+            self._agent_runs.pop(agent_run.run_id, None)
+
     async def stream_agent_request(
         self, message: str, idempotency_key: str | None = None
     ) -> AsyncIterator[str]:
@@ -372,35 +435,11 @@ class OpenClawGatewayClient:
             GatewayTimeoutError: If request times out
             AgentExecutionError: If agent execution fails
         """
-        if idempotency_key is None:
-            idempotency_key = str(uuid.uuid4())
-
-        _LOGGER.debug("Streaming agent request with key: %s", idempotency_key)
-
         try:
-            agent_run = await self._start_agent_run(
-                message, idempotency_key, stream=True
-            )
-            run_id = agent_run.run_id
+            agent_run = await self.begin_agent_run(message, idempotency_key)
 
-            try:
-                async for chunk in agent_run.iter_stream(self._timeout):
-                    yield chunk
-
-                if agent_run.status == "ok":
-                    return
-
-                if agent_run.status == "error":
-                    raise AgentExecutionError(
-                        f"Agent execution failed: {agent_run.summary}"
-                    )
-
-                raise AgentExecutionError(
-                    f"Unknown agent status: {agent_run.status}"
-                )
-
-            finally:
-                self._agent_runs.pop(run_id, None)
+            async for chunk in self.stream_run(agent_run):
+                yield chunk
 
         except (GatewayConnectionError, GatewayTimeoutError):
             raise
@@ -613,7 +652,13 @@ class OpenClawGatewayClient:
         message = payload.get("message") or {}
         if not isinstance(message, dict) or message.get("role") != "assistant":
             return
-        if time.monotonic() - self._last_local_turn < PROACTIVE_SUPPRESS_SECONDS:
+        # A run we started (including one detached past the grace period) can
+        # take arbitrarily long, so suppress while any local run is in flight,
+        # plus a short tail after the last local activity to cover the gap
+        # between run completion and its echo arriving.
+        if self._agent_runs or (
+            time.monotonic() - self._last_local_turn < PROACTIVE_SUPPRESS_SECONDS
+        ):
             _LOGGER.debug(
                 "Suppressing session message near a local turn (run echo)"
             )

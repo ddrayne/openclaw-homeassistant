@@ -33,6 +33,18 @@ class TestProactiveDedup:
         client._handle_session_message(self._msg("assistant", "echo of reply"))
         assert seen == []
 
+    def test_echo_suppressed_while_local_run_in_flight(self) -> None:
+        # A detached (background) run can outlive the 15s suppression tail;
+        # its session-message echo must still be suppressed while the run is
+        # tracked as in-flight.
+        client = OpenClawGatewayClient("localhost", 1, None)
+        seen: list[str] = []
+        client.set_proactive_handler(seen.append)
+        client._agent_runs["r1"] = object()
+        client._last_local_turn = time.monotonic() - 100  # tail long expired
+        client._handle_session_message(self._msg("assistant", "late echo"))
+        assert seen == []
+
     def test_user_message_ignored(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         seen: list[str] = []

@@ -34,6 +34,7 @@ through your smart-home voice assistant.
   - [Call the agent from automations](#call-the-agent-from-automations)
 - [Feature guides](#feature-guides)
   - [Multi-turn voice](#multi-turn-voice)
+  - [Background work](#background-work)
   - [Proactive voice](#proactive-voice)
   - [Sessions & agent routing](#sessions--agent-routing)
   - [Model & thinking overrides](#model--thinking-overrides)
@@ -181,7 +182,7 @@ openclaw gateway --bind lan
    - **Port** — gateway port (default `18789`)
    - **Gateway Token** — your token (required)
    - **Use SSL** — enable for `wss://` (recommended for remote)
-   - **Agent Timeout** — max seconds to wait for a reply (default **120**, range 5–300)
+   - **Agent Timeout** — max seconds to wait for a reply (default **300**, range 5–600)
 3. **Device approval** (first connect only):
    - **Local / localhost** → **auto-approved**, setup continues immediately.
    - **Remote** → a **Device Approval Required** step appears. Approve it, then
@@ -207,13 +208,16 @@ All of these are editable any time via **Settings → Devices & Services → Ope
 | **Port** | `18789` | Gateway port |
 | **Gateway Token** | — | Authentication token (required) |
 | **Use SSL** | Off | Use `wss://` (recommended for remote) |
-| **Agent Timeout** | `120` s | Max wait for a reply (5–300) |
+| **Agent Timeout** | `300` s | Max wait for a reply (5–600) |
 | **Session Key** | `main` | OpenClaw session to route HA conversations to |
 | **Agent** | gateway default | Route to a specific gateway agent (keys the session as `agent:<id>:<session>`) |
 | **Model override** | gateway default | Per-integration model (e.g. `anthropic/claude-...`) |
 | **Thinking mode** | gateway default | `off` / `low` / `medium` / `high` |
 | **Strip emojis from TTS** | On | Remove emojis from spoken output |
 | **TTS max characters** | `0` (no limit) | Trim long spoken replies (0–2000) |
+| **Background work** | On | Slow requests answer later via announce instead of timing out |
+| **Grace period** | `10` s | Silence before a request is deferred to background (3–60) |
+| **Holding phrase** | “On it — I’ll let you know when it’s done.” | Spoken when a request is deferred |
 | **Proactive voice** | Off | Let the agent speak first on a satellite |
 | **Satellite to speak on** | — | `assist_satellite` entity used for proactive announcements |
 | **Proactive mode** | `announce` | `announce` (speak) or `start_conversation` (speak + reopen mic) |
@@ -287,6 +291,26 @@ When the agent's reply asks a follow-up question, the integration sets
 `continue_conversation` so the satellite **keeps its mic open** — you can answer
 without saying the wake word again. It works automatically, requires no
 configuration, and falls back cleanly on HA versions that don't support the flag.
+
+### Background work
+
+A voice turn is synchronous — the satellite expects speech back within seconds.
+But agent work like browsing the web or triaging email can stay silent for
+minutes. Instead of ending in “the response took too long”, the integration
+races every request against a short **grace period** (default **10s**):
+
+- **Agent starts talking in time** → the answer streams inline, exactly as
+  normal. Quick questions are unaffected.
+- **Still silent when the grace period ends** → the assistant speaks the
+  **holding phrase** (“On it — I’ll let you know when it’s done.”), the run
+  continues in the background, and the result is **announced when it finishes**
+  — on the satellite you spoke to, falling back to the configured proactive
+  satellite. Failures are announced too, so a deferred request never goes
+  silent.
+
+On by default; tune or disable it under **Configure** (**Background work**,
+**Grace period**, **Holding phrase**). It works even with proactive voice off —
+the report-back speaks directly on the originating satellite.
 
 ### Proactive voice
 
@@ -407,8 +431,11 @@ connection looks local to OpenClaw, so device pairing is typically auto-approved
   repair issue appears. Re-approve in OpenClaw, then reload the integration.
 
 **Response timeout**
-- The reply took longer than the timeout (default **120s**). Increase **Agent
-  Timeout** under **Configure** for complex tasks, and check gateway logs.
+- With **Background work** on (the default), slow requests defer to a background
+  announce instead of timing out, so “the response took too long” should be
+  rare: it means **Background work** is off, or a deferred run stayed silent
+  past the **Agent Timeout** (default **300s**) and was announced as stopped.
+  Increase the timeout under **Configure**, and check gateway logs.
 
 **Protocol mismatch**
 - Means the integration and gateway speak different protocol versions. Update both

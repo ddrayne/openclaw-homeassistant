@@ -20,7 +20,13 @@ from tests._conversation_loader import load_conversation_module
 def _make_entry() -> MagicMock:
     entry = MagicMock()
     entry.entry_id = "entry-1"
-    entry.data = {"strip_emojis": False, "tts_max_chars": 0}
+    # background_enabled False: these tests pin the legacy (non-grace-race)
+    # request paths, which remain reachable behind that option.
+    entry.data = {
+        "strip_emojis": False,
+        "tts_max_chars": 0,
+        "background_enabled": False,
+    }
     entry.options = {}
     return entry
 

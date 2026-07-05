@@ -6,7 +6,7 @@ DOMAIN = "openclaw"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 18789
 DEFAULT_USE_SSL = False
-DEFAULT_TIMEOUT = 120  # seconds
+DEFAULT_TIMEOUT = 300  # seconds
 DEFAULT_SESSION_KEY = "main"  # Default direct-chat session
 DEFAULT_MODEL = None
 DEFAULT_THINKING = None
@@ -24,6 +24,15 @@ PROACTIVE_MODE_START_CONVERSATION = "start_conversation"
 # seconds of local agent activity (the satellite already spoke those).
 PROACTIVE_SUPPRESS_SECONDS = 15.0
 
+# Background work: when a request produces no content within the grace period,
+# speak a holding phrase, let the run finish detached, and announce the result
+# on the originating satellite (fallback: the proactive satellite).
+DEFAULT_BACKGROUND_ENABLED = True
+DEFAULT_BACKGROUND_GRACE = 10  # seconds to wait for first content
+DEFAULT_HOLDING_PHRASE = "On it — I'll let you know when it's done."
+BACKGROUND_ERROR_PHRASE = "Sorry — that request ran into a problem."
+BACKGROUND_TIMEOUT_PHRASE = "That one took too long, so I stopped."
+
 # Configuration keys
 CONF_HOST = "host"
 CONF_PORT = "port"
@@ -39,6 +48,9 @@ CONF_TTS_MAX_CHARS = "tts_max_chars"
 CONF_PROACTIVE_ENABLED = "proactive_enabled"
 CONF_PROACTIVE_SATELLITE = "proactive_satellite"
 CONF_PROACTIVE_MODE = "proactive_mode"
+CONF_BACKGROUND_ENABLED = "background_enabled"
+CONF_BACKGROUND_GRACE = "background_grace"
+CONF_HOLDING_PHRASE = "holding_phrase"
 # Connection states
 STATE_CONNECTED = "connected"
 STATE_DISCONNECTED = "disconnected"
