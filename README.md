@@ -65,6 +65,9 @@ through your smart-home voice assistant.
 - **Multi-turn voice** — when the agent asks a follow-up question, the satellite's
   mic stays open so you can answer without repeating the wake word. Automatic, no
   setup. [Details ›](#multi-turn-voice)
+- **Background work** — long-running requests get an "on it" acknowledgment and
+  the result is announced on your satellite when it's ready, instead of a
+  timeout error. On by default. [Details ›](#background-work)
 - **Proactive voice** (opt-in) — let the agent speak *first* on a satellite
   (reminders, "task done", follow-ups) via `assist_satellite.announce` /
   `start_conversation`. [Details ›](#proactive-voice)
@@ -182,7 +185,9 @@ openclaw gateway --bind lan
    - **Port** — gateway port (default `18789`)
    - **Gateway Token** — your token (required)
    - **Use SSL** — enable for `wss://` (recommended for remote)
-   - **Agent Timeout** — max seconds to wait for a reply (default **300**, range 5–600)
+   - **Agent Timeout** — max seconds to wait for an inline reply (default **300**,
+     range 5–600); requests deferred to [background work](#background-work) get
+     their own 1-hour budget
 3. **Device approval** (first connect only):
    - **Local / localhost** → **auto-approved**, setup continues immediately.
    - **Remote** → a **Device Approval Required** step appears. Approve it, then
@@ -208,7 +213,7 @@ All of these are editable any time via **Settings → Devices & Services → Ope
 | **Port** | `18789` | Gateway port |
 | **Gateway Token** | — | Authentication token (required) |
 | **Use SSL** | Off | Use `wss://` (recommended for remote) |
-| **Agent Timeout** | `300` s | Max wait for a reply (5–600) |
+| **Agent Timeout** | `300` s | Max wait for an inline reply (5–600); deferred runs get a 1-hour budget instead |
 | **Session Key** | `main` | OpenClaw session to route HA conversations to |
 | **Agent** | gateway default | Route to a specific gateway agent (keys the session as `agent:<id>:<session>`) |
 | **Model override** | gateway default | Per-integration model (e.g. `anthropic/claude-...`) |
@@ -475,6 +480,11 @@ connection looks local to OpenClaw, so device pairing is typically auto-approved
   own cross-platform memory is unaffected.
 - **Proactive voice** — only speaks when the gateway produces a proactive turn (see
   [Proactive voice](#proactive-voice)), and requires an `assist_satellite` entity.
+- **Background work across restarts** — a request deferred to background is
+  dropped if Home Assistant restarts before it finishes (the gateway run
+  continues; with proactive voice enabled its answer can still arrive). While a
+  deferred run is in flight, proactive announcements are held back to avoid
+  double-speaking its result.
 
 ## Security
 
