@@ -282,18 +282,48 @@ class TestSlowPath:
         assert calls[0][2]["message"] == _conv_plain.BACKGROUND_ERROR_PHRASE
 
     @pytest.mark.asyncio
-    async def test_detached_timeout_announces_timeout_phrase(self) -> None:
+    async def test_detached_run_outlives_short_agent_timeout(self) -> None:
+        # Regression: a voice-tuned Agent Timeout (e.g. the old 30s default)
+        # must NOT strangle a deferred run. The background wait has its own
+        # budget, independent of the client timeout.
         client, entity = _make_env(
             _conv_plain,
             {
                 "background_grace": 0.05,
                 "proactive_satellite": "assist_satellite.kitchen",
             },
-            timeout=0.05,
+            timeout=0.05,  # far shorter than the run takes
+        )
+        task = _start(_conv_plain, entity)
+        result = await asyncio.wait_for(task, 2)
+        assert result.response.speech == _conv_plain.DEFAULT_HOLDING_PHRASE
+
+        # Run finishes well after the client timeout would have expired.
+        await asyncio.sleep(0.3)
+        client._handle_agent_event(_output_event(RUN_ID, "Slow but done"))
+        client._handle_agent_event(_done_event(RUN_ID))
+        await _settle()
+
+        calls = entity.hass.services.calls
+        assert len(calls) == 1
+        assert calls[0][2]["message"] == "Slow but done"
+
+    @pytest.mark.asyncio
+    async def test_detached_timeout_announces_timeout_phrase(
+        self, monkeypatch
+    ) -> None:
+        # Only the background budget itself ends the wait.
+        monkeypatch.setattr(_conv_plain, "BACKGROUND_MAX_SECONDS", 0.1)
+        client, entity = _make_env(
+            _conv_plain,
+            {
+                "background_grace": 0.05,
+                "proactive_satellite": "assist_satellite.kitchen",
+            },
         )
         task = _start(_conv_plain, entity)
         await asyncio.wait_for(task, 2)
-        # No further events: the per-chunk timeout expires in the background.
+        # No further events: the background budget expires.
         await _settle(0.3)
 
         calls = entity.hass.services.calls
@@ -321,6 +351,45 @@ class TestSlowPath:
         calls = entity.hass.services.calls
         assert len(calls) == 1
         assert calls[0][2]["message"] == "All done"
+
+
+class TestConcurrentDeferredRuns:
+    """Multiple deferred requests each report back independently."""
+
+    @pytest.mark.asyncio
+    async def test_two_runs_announce_independently_out_of_order(self) -> None:
+        client, entity = _make_env(
+            _conv_plain,
+            {
+                "background_grace": 0.05,
+                "proactive_satellite": "assist_satellite.kitchen",
+            },
+        )
+        run_ids = iter(["r1", "r2"])
+
+        async def _fake_send_request(method=None, params=None, timeout=None, **_kw):
+            return {"payload": {"runId": next(run_ids)}}
+
+        client._gateway.send_request = _fake_send_request
+
+        # Two requests defer, back to back.
+        task1 = _start(_conv_plain, entity)
+        result1 = await asyncio.wait_for(task1, 2)
+        task2 = _start(_conv_plain, entity)
+        result2 = await asyncio.wait_for(task2, 2)
+        assert result1.response.speech == _conv_plain.DEFAULT_HOLDING_PHRASE
+        assert result2.response.speech == _conv_plain.DEFAULT_HOLDING_PHRASE
+
+        # Second one finishes first; both announce, in completion order.
+        client._handle_agent_event(_output_event("r2", "Second done"))
+        client._handle_agent_event(_done_event("r2"))
+        await _settle()
+        client._handle_agent_event(_output_event("r1", "First done"))
+        client._handle_agent_event(_done_event("r1"))
+        await _settle()
+
+        messages = [c[2]["message"] for c in entity.hass.services.calls]
+        assert messages == ["Second done", "First done"]
 
 
 class TestOlderHomeAssistant:

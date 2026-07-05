@@ -16,6 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     BACKGROUND_ERROR_PHRASE,
+    BACKGROUND_MAX_SECONDS,
     BACKGROUND_TIMEOUT_PHRASE,
     CONF_BACKGROUND_ENABLED,
     CONF_BACKGROUND_GRACE,
@@ -439,13 +440,20 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
     async def _background_report(
         self, agent_run: AgentRun, device_id: str | None
     ) -> None:
-        """Drain a detached run and announce its result on a satellite."""
+        """Await a detached run and announce its result on a satellite."""
         try:
-            async for _chunk in self._gateway_client.stream_run(agent_run):
-                pass
-            text = agent_run.get_response()
+            # Overall completion budget, deliberately independent of the
+            # voice-tuned agent timeout — a short one must not strangle a
+            # deferred run (the whole point of deferring is "take your time").
+            text = await self._gateway_client.wait_run(
+                agent_run, BACKGROUND_MAX_SECONDS
+            )
         except GatewayTimeoutError:
-            _LOGGER.warning("Background run %s timed out", agent_run.run_id)
+            _LOGGER.warning(
+                "Background run %s did not finish within %ss",
+                agent_run.run_id,
+                BACKGROUND_MAX_SECONDS,
+            )
             text = BACKGROUND_TIMEOUT_PHRASE
         except asyncio.CancelledError:
             raise

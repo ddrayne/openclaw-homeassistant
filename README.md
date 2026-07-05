@@ -433,9 +433,11 @@ connection looks local to OpenClaw, so device pairing is typically auto-approved
 **Response timeout**
 - With **Background work** on (the default), slow requests defer to a background
   announce instead of timing out, so “the response took too long” should be
-  rare: it means **Background work** is off, or a deferred run stayed silent
-  past the **Agent Timeout** (default **300s**) and was announced as stopped.
-  Increase the timeout under **Configure**, and check gateway logs.
+  rare — it means **Background work** is off. A deferred run gets its own
+  budget (**1 hour**, independent of Agent Timeout); if it still hasn’t
+  finished by then, that is announced too. The **Agent Timeout** only governs
+  inline (non-deferred) replies, so it’s safe to keep it short for snappy
+  voice failures.
 
 **Protocol mismatch**
 - Means the integration and gateway speak different protocol versions. Update both

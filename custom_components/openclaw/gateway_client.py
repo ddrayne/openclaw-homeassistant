@@ -390,6 +390,36 @@ class OpenClawGatewayClient:
         _LOGGER.debug("Beginning agent run with key: %s", idempotency_key)
         return await self._start_agent_run(message, idempotency_key, stream=True)
 
+    async def wait_run(self, agent_run: AgentRun, timeout: float) -> str:
+        """Wait for an already-started run to complete and return its text.
+
+        For detached (background) consumers: the timeout is an overall
+        completion budget, not a per-chunk one — a deferred run only needs to
+        finish eventually, not stream regularly. Owns run-tracker cleanup,
+        so use either wait_run or stream_run for a run, never both.
+
+        Raises:
+            GatewayTimeoutError: If the run doesn't complete within timeout
+            AgentExecutionError: If agent execution fails
+        """
+        try:
+            try:
+                await asyncio.wait_for(
+                    agent_run.complete_event.wait(), timeout=timeout
+                )
+            except asyncio.TimeoutError as err:
+                raise GatewayTimeoutError("Agent response timeout") from err
+
+            if agent_run.status == "ok":
+                return agent_run.get_response()
+
+            raise AgentExecutionError(
+                f"Agent execution failed: {agent_run.summary}"
+            )
+
+        finally:
+            self._agent_runs.pop(agent_run.run_id, None)
+
     async def stream_run(self, agent_run: AgentRun) -> AsyncIterator[str]:
         """Consume an already-started run: yield chunks, raise on failure.
 

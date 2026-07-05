@@ -31,7 +31,13 @@ DEFAULT_BACKGROUND_ENABLED = True
 DEFAULT_BACKGROUND_GRACE = 10  # seconds to wait for first content
 DEFAULT_HOLDING_PHRASE = "On it — I'll let you know when it's done."
 BACKGROUND_ERROR_PHRASE = "Sorry — that request ran into a problem."
-BACKGROUND_TIMEOUT_PHRASE = "That one took too long, so I stopped."
+BACKGROUND_TIMEOUT_PHRASE = (
+    "That's taking longer than expected, so I've stopped waiting for it."
+)
+# Overall completion budget for a detached run. Deliberately decoupled from
+# the (voice-tuned, often short) agent timeout: once deferred, a run only
+# needs to finish eventually, not chunk regularly.
+BACKGROUND_MAX_SECONDS = 3600.0
 
 # Configuration keys
 CONF_HOST = "host"
