@@ -300,7 +300,7 @@ minutes. Instead of ending in “the response took too long”, the integration
 races every request against a short **grace period** (default **10s**):
 
 - **Agent starts talking in time** → the answer streams inline, exactly as
-  normal. Quick questions are unaffected.
+  normal.
 - **Still silent when the grace period ends** → the assistant speaks the
   **holding phrase** (“On it — I’ll let you know when it’s done.”), the run
   continues in the background, and the result is **announced when it finishes**
@@ -311,6 +311,15 @@ races every request against a short **grace period** (default **10s**):
 On by default; tune or disable it under **Configure** (**Background work**,
 **Grace period**, **Holding phrase**). It works even with proactive voice off —
 the report-back speaks directly on the originating satellite.
+
+> **The race measures your agent’s time-to-first-content, not question
+> difficulty.** A heavyweight agent (big model, thinking enabled) can take
+> longer than the grace period to say *anything* — then even “what time is
+> it?” defers and gets announced a moment later. If that happens, make the
+> voice agent fast rather than the grace long: set **Thinking mode** to `off`
+> and/or a fast **Model override** in this integration’s options, or route to
+> a [voice-optimized session](#voice-optimized-session). Raising **Grace
+> period** works too, at the cost of slower deferral for genuinely long work.
 
 ### Proactive voice
 
