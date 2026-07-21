@@ -120,7 +120,9 @@ async def async_load_or_create_keypair(hass) -> Ed25519PrivateKey:
     """Load persisted Ed25519 keypair or generate and save a new one."""
     from homeassistant.helpers.storage import Store
 
-    store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    # Home Assistant writes private stores with restrictive file permissions.
+    # The key is intentionally persisted so the Gateway sees a stable device.
+    store = Store(hass, STORAGE_VERSION, STORAGE_KEY, private=True)
     data = await store.async_load()
 
     if data and "private_key_hex" in data:

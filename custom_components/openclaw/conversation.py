@@ -270,8 +270,8 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
     ) -> conversation.ConversationResult:
         """Handle user message."""
         _LOGGER.debug(
-            "Processing message: %s (conversation_id: %s)",
-            user_input.text,
+            "Processing message (%d characters; conversation_id: %s)",
+            len(user_input.text),
             user_input.conversation_id,
         )
 

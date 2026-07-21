@@ -3,6 +3,7 @@
 import asyncio
 import importlib.util
 import json
+import logging
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -26,6 +27,9 @@ sys.modules.setdefault("custom_components.openclaw", ModuleType("custom_componen
 
 _const = _load_module("custom_components.openclaw.const", _BASE / "const.py")
 _exceptions = _load_module("custom_components.openclaw.exceptions", _BASE / "exceptions.py")
+_device_auth = _load_module(
+    "custom_components.openclaw.device_auth", _BASE / "device_auth.py"
+)
 _gateway = _load_module("custom_components.openclaw.gateway", _BASE / "gateway.py")
 
 DevicePairingRequiredError = _exceptions.DevicePairingRequiredError
@@ -185,12 +189,13 @@ class TestHandshake:
         assert protocol._websocket.sent[0]["method"] == "connect"
 
     @pytest.mark.asyncio
-    async def test_snapshot_captured_from_handshake(self) -> None:
+    async def test_snapshot_captured_from_handshake(self, caplog) -> None:
         snapshot_data = {
             "snapshot": {
                 "uptimeMs": 123456,
                 "health": {"status": "ok"},
                 "presence": {"clients": ["a"]},
+                "sessions": {"recent": [{"key": "private-session-key"}]},
                 "stateVersion": 7,
             },
             "policy": {"maxSessions": 5},
@@ -207,10 +212,12 @@ class TestHandshake:
         protocol = GatewayProtocol("localhost", 1, None)
         protocol._websocket = DummyWebSocket([response])
 
-        await protocol._handshake()
+        with caplog.at_level(logging.DEBUG):
+            await protocol._handshake()
 
         assert protocol.connect_snapshot == snapshot_data
         assert protocol.connect_snapshot["snapshot"]["uptimeMs"] == 123456
+        assert "private-session-key" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_snapshot_defaults_to_empty(self) -> None:
@@ -452,10 +459,11 @@ class TestChallengeHandshake:
         assert "device" not in connect_params
 
     @pytest.mark.asyncio
-    async def test_token_in_uri_query_param(self) -> None:
-        """Token is included as query param in the WebSocket URI."""
+    async def test_token_is_not_in_uri(self) -> None:
+        """Token is not exposed in the WebSocket URI."""
         protocol = GatewayProtocol("localhost", 18789, "my-secret-token")
-        assert protocol._uri == "ws://localhost:18789/?token=my-secret-token"
+        assert protocol._uri == "ws://localhost:18789"
+        assert "my-secret-token" not in protocol._uri
 
     @pytest.mark.asyncio
     async def test_no_token_uri_has_no_query(self) -> None:

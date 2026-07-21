@@ -10,6 +10,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue, async_delete_issue
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import (
     CONF_AGENT_ID,
@@ -174,8 +175,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await client.disconnect()
                 await client.connect()
 
-        hass.services.async_register(
-            DOMAIN, SERVICE_RECONNECT, _async_handle_reconnect, schema=_RECONNECT_SCHEMA
+        async_register_admin_service(
+            hass,
+            DOMAIN,
+            SERVICE_RECONNECT,
+            _async_handle_reconnect,
+            _RECONNECT_SCHEMA,
         )
 
         async def _async_handle_set_session(call) -> None:
@@ -202,11 +207,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for client in targets:
                 client.set_session_key(session_key)
 
-        hass.services.async_register(
+        async_register_admin_service(
+            hass,
             DOMAIN,
             SERVICE_SET_SESSION,
             _async_handle_set_session,
-            schema=_SESSION_SCHEMA,
+            _SESSION_SCHEMA,
         )
         hass.data[DOMAIN][_SERVICE_REGISTERED] = True
 

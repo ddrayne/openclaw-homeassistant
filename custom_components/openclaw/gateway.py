@@ -1,6 +1,7 @@
 """Low-level WebSocket protocol client for OpenClaw Gateway."""
 
 import asyncio
+import inspect
 import json
 import logging
 import time
@@ -80,12 +81,11 @@ class GatewayProtocol:
         # per-connection state (e.g. session subscriptions) on reconnect.
         self._on_connected: Callable[[], None] | None = None
 
-        # Build WebSocket URI (include token as query param for gateway auth)
+        # Keep credentials out of the URI so they cannot leak through logs,
+        # proxies, or exception messages. Authentication is sent in the
+        # connect payload below, with headers retained for legacy gateways.
         protocol = "wss" if use_ssl else "ws"
-        if token:
-            self._uri = f"{protocol}://{host}:{port}/?token={token}"
-        else:
-            self._uri = f"{protocol}://{host}:{port}"
+        self._uri = f"{protocol}://{host}:{port}"
 
     @property
     def connected(self) -> bool:
@@ -325,10 +325,7 @@ class GatewayProtocol:
                 and challenge.get("event") == "connect.challenge"
             ):
                 nonce = challenge.get("payload", {}).get("nonce")
-                _LOGGER.debug(
-                    "Received connect.challenge with nonce: %s",
-                    nonce[:8] if nonce else "none",
-                )
+                _LOGGER.debug("Received connect.challenge")
             else:
                 _LOGGER.debug(
                     "First message was not connect.challenge (%s/%s), "
@@ -420,7 +417,11 @@ class GatewayProtocol:
                     )
                     continue
 
-                _LOGGER.debug("Received connect response: %s", response)
+                _LOGGER.debug(
+                    "Received connect response (type=%s, ok=%s)",
+                    response.get("type"),
+                    response.get("ok"),
+                )
 
                 if response.get("type") != "res":
                     raise ProtocolError(
@@ -489,7 +490,8 @@ class GatewayProtocol:
 
                 except json.JSONDecodeError:
                     _LOGGER.warning(
-                        "Received invalid JSON: %s", message_text
+                        "Received invalid JSON message (%d characters)",
+                        len(message_text),
                     )
 
                 except Exception as err:  # pylint: disable=broad-except
@@ -591,7 +593,7 @@ class GatewayProtocol:
         )
         for handler in handlers:
             try:
-                if asyncio.iscoroutinefunction(handler):
+                if inspect.iscoroutinefunction(handler):
                     await handler(event)
                 else:
                     handler(event)

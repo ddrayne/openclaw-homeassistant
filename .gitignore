@@ -110,3 +110,6 @@ dmypy.json
 
 # macOS
 .DS_Store
+
+# Local OpenClaw backups (may contain credentials)
+*-openclaw-backup.tar.gz

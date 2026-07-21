@@ -643,10 +643,7 @@ class OpenClawGatewayClient:
                 {"key": self._effective_session_key},
                 timeout=5.0,
             )
-            _LOGGER.debug(
-                "Subscribed to session messages for %s",
-                self._effective_session_key,
-            )
+            _LOGGER.debug("Subscribed to configured session messages")
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.warning(
                 "Failed to subscribe to session messages: %s", err

@@ -488,15 +488,20 @@ connection looks local to OpenClaw, so device pairing is typically auto-approved
 
 ## Security
 
-- **Two-factor** — every connection uses both a Gateway token and a unique Ed25519
-  device keypair.
-- **Encrypted at rest** — tokens and device keys are stored encrypted by Home
-  Assistant.
+- **Layered authentication** — current gateways use a Gateway token and a unique
+  Ed25519 device identity; legacy gateways may use token-only authentication.
+- **Local credential storage** — the token is held in Home Assistant's config
+  entry storage and the device key uses private-permission storage. This
+  integration does not add application-level encryption, so protect your Home
+  Assistant config directory and backups.
 - **Pairing approval** — remote devices require one-time approval; local
   connections auto-approve.
 - **Transport** — use SSL/TLS (or an SSH tunnel) for anything off-box; the
   integration warns when connecting to a non-localhost host without SSL.
-- The token grants full access to your agent — keep it secret.
+- The token grants access to your agent — keep it secret and use a dedicated,
+  least-privilege agent where possible.
+- Report suspected vulnerabilities privately as described in
+  [SECURITY.md](SECURITY.md).
 
 ## Contributing
 

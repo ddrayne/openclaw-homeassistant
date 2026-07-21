@@ -81,6 +81,9 @@ def _load_module(name: str, path: Path):
 
 _const = _load_module("custom_components.openclaw.const", _BASE / "const.py")
 _exceptions = _load_module("custom_components.openclaw.exceptions", _BASE / "exceptions.py")
+_device_auth = _load_module(
+    "custom_components.openclaw.device_auth", _BASE / "device_auth.py"
+)
 _gateway = _load_module("custom_components.openclaw.gateway", _BASE / "gateway.py")
 _gateway_client = _load_module(
     "custom_components.openclaw.gateway_client", _BASE / "gateway_client.py"
@@ -152,6 +155,14 @@ class TestOpenClawUptimeSensor:
         assert attrs["state_version"] is None
         assert attrs["sessions"] is None
 
+    def test_extra_state_attributes_omit_session_details(self) -> None:
+        client = _make_client()
+        coordinator = _make_coordinator(
+            {"sessions": {"recent": [{"key": "agent:dan:main"}]}}
+        )
+        sensor = OpenClawUptimeSensor(coordinator, "test_entry", client)
+        assert sensor.extra_state_attributes["sessions"] is None
+
     def test_unique_id(self) -> None:
         client = _make_client()
         coordinator = _make_coordinator(None)
@@ -191,16 +202,22 @@ class TestOpenClawConnectedClientsSensor:
         assert sensor.native_value is None
 
     def test_extra_state_attributes_with_list(self) -> None:
-        client = _make_client(presence={"clients": ["ha", "web"]})
+        client = _make_client(
+            presence={
+                "clients": [
+                    {"host": "ha.local", "ip": "192.0.2.10"},
+                    {"deviceId": "private-device-id"},
+                ]
+            }
+        )
         sensor = OpenClawConnectedClientsSensor("test_entry", client)
-        attrs = sensor.extra_state_attributes
-        assert attrs["client_list"] == ["ha", "web"]
+        assert sensor.native_value == 2
+        assert sensor.extra_state_attributes == {}
 
     def test_extra_state_attributes_no_list(self) -> None:
         client = _make_client(presence={"clients": 2})
         sensor = OpenClawConnectedClientsSensor("test_entry", client)
-        attrs = sensor.extra_state_attributes
-        assert "client_list" not in attrs
+        assert sensor.extra_state_attributes == {}
 
     def test_extra_state_attributes_empty(self) -> None:
         client = _make_client()

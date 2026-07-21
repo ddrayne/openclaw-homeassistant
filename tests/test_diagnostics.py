@@ -37,6 +37,7 @@ async def test_diagnostics_redacts_token_and_includes_health() -> None:
 
     _load_module("custom_components.openclaw.const", base / "const.py")
     _load_module("custom_components.openclaw.exceptions", base / "exceptions.py")
+    _load_module("custom_components.openclaw.device_auth", base / "device_auth.py")
     _load_module("custom_components.openclaw.gateway", base / "gateway.py")
     _load_module("custom_components.openclaw.gateway_client", base / "gateway_client.py")
     diagnostics = _load_module("custom_components.openclaw.diagnostics", base / "diagnostics.py")
@@ -48,7 +49,20 @@ async def test_diagnostics_redacts_token_and_includes_health() -> None:
 
     client = AsyncMock()
     client.connected = True
-    client.health = AsyncMock(return_value={"status": "ok"})
+    client.health = AsyncMock(
+        return_value={
+            "status": "ok",
+            "version": "2026.7.2",
+            "sessions": {
+                "count": 2,
+                "path": "/config/private/sessions.json",
+                "recent": [{"key": "agent:dan:main"}],
+            },
+            "channels": {"telegram": {"account_id": "123456"}},
+            "agents": [{"id": "dan"}],
+            "secret": "must-not-leak",
+        }
+    )
 
     hass = MagicMock()
     hass.data = {"openclaw": {"entry-1": client}}
@@ -58,4 +72,15 @@ async def test_diagnostics_redacts_token_and_includes_health() -> None:
     assert result["config"]["token"] == "REDACTED"
     assert result["options"]["token"] == "REDACTED"
     assert result["connected"] is True
-    assert result["health"] == {"status": "ok"}
+    assert result["health"] == {
+        "status": "ok",
+        "version": "2026.7.2",
+        "channel_count": 1,
+        "agent_count": 1,
+        "session_count": 2,
+    }
+    serialized = repr(result)
+    assert "must-not-leak" not in serialized
+    assert "agent:dan:main" not in serialized
+    assert "/config/private" not in serialized
+    assert "123456" not in serialized

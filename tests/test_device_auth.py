@@ -179,3 +179,32 @@ class TestBuildDeviceAuthDict:
         # Verify — raises InvalidSignature if invalid
         pub_key = Ed25519PublicKey.from_public_bytes(pub_bytes)
         pub_key.verify(sig_bytes, payload.encode("utf-8"))
+
+
+@pytest.mark.asyncio
+async def test_keypair_store_uses_private_permissions(monkeypatch) -> None:
+    """The persisted private key uses Home Assistant's private store mode."""
+    saved: dict[str, object] = {}
+
+    class FakeStore:
+        def __init__(self, hass, version, key, *, private=False) -> None:
+            saved["private"] = private
+
+        async def async_load(self):
+            return None
+
+        async def async_save(self, data) -> None:
+            saved["data"] = data
+
+    homeassistant = ModuleType("homeassistant")
+    helpers = ModuleType("homeassistant.helpers")
+    storage = ModuleType("homeassistant.helpers.storage")
+    storage.Store = FakeStore
+    monkeypatch.setitem(sys.modules, "homeassistant", homeassistant)
+    monkeypatch.setitem(sys.modules, "homeassistant.helpers", helpers)
+    monkeypatch.setitem(sys.modules, "homeassistant.helpers.storage", storage)
+
+    await _device_auth.async_load_or_create_keypair(object())
+
+    assert saved["private"] is True
+    assert "private_key_hex" in saved["data"]

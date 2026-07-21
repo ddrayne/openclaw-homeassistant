@@ -124,9 +124,12 @@ class OpenClawUptimeSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self.coordinator.data or {}
+        sessions = data.get("sessions")
+        if isinstance(sessions, bool) or not isinstance(sessions, int):
+            sessions = None
         return {
             "state_version": data.get("stateVersion"),
-            "sessions": data.get("sessions"),
+            "sessions": sessions,
         }
 
 
@@ -167,12 +170,9 @@ class OpenClawConnectedClientsSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        presence = self._client.presence
-        attrs: dict[str, Any] = {}
-        clients = presence.get("clients")
-        if isinstance(clients, list):
-            attrs["client_list"] = clients
-        return attrs
+        # Presence entries can contain hostnames, IP addresses, device IDs,
+        # and account details. The sensor state already exposes the safe count.
+        return {}
 
 
 class OpenClawHealthSensor(CoordinatorEntity, SensorEntity):
