@@ -316,8 +316,7 @@ class TestSendAgentRequest:
         assert result == "Hi there"
         assert client._agent_runs == {}
 
-        client._gateway.send_request.assert_called_once()  # type: ignore[attr-defined]
-        params = client._gateway.send_request.call_args.kwargs["params"]  # type: ignore[attr-defined]
+        params = client._gateway.send_request.call_args_list[-1].kwargs["params"]  # type: ignore[attr-defined]
         assert params["idempotencyKey"] == "fixed"
         assert "options" not in params
         assert params["sessionKey"] == "main"
@@ -345,10 +344,13 @@ class TestSendAgentRequest:
         assert params["sessionKey"] == "agent:my-agent:chat"
 
     @pytest.mark.asyncio
-    async def test_no_agent_id_keeps_plain_session_key(self) -> None:
+    async def test_gateway_default_agent_prefixes_session_key(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None, session_key="chat")
         client._gateway.send_request = AsyncMock(  # type: ignore[attr-defined]
-            return_value={"payload": {"runId": "run-1"}}
+            side_effect=[
+                {"payload": {"defaultId": "main"}},
+                {"payload": {"runId": "run-1"}},
+            ]
         )
 
         task = asyncio.create_task(client.send_agent_request("hello"))
@@ -361,8 +363,32 @@ class TestSendAgentRequest:
 
         await task
 
-        params = client._gateway.send_request.call_args.kwargs["params"]  # type: ignore[attr-defined]
-        assert params["sessionKey"] == "chat"
+        calls = client._gateway.send_request.call_args_list  # type: ignore[attr-defined]
+        assert calls[0].args == ("agents.list",)
+        assert calls[1].kwargs["params"]["sessionKey"] == "agent:main:chat"
+
+    @pytest.mark.asyncio
+    async def test_missing_gateway_default_keeps_plain_session_key(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None, session_key="chat")
+        client._gateway.send_request = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=[
+                {"payload": {}},
+                {"payload": {"runId": "run-1"}},
+            ]
+        )
+
+        task = asyncio.create_task(client.send_agent_request("hello"))
+
+        await _wait_for_run(client)
+
+        client._handle_agent_event(
+            {"payload": {"runId": "run-1", "status": "ok", "summary": "done"}}
+        )
+
+        await task
+
+        calls = client._gateway.send_request.call_args_list  # type: ignore[attr-defined]
+        assert calls[1].kwargs["params"]["sessionKey"] == "chat"
 
     @pytest.mark.asyncio
     async def test_thinking_sent_as_root_param(self) -> None:
@@ -490,8 +516,7 @@ class TestStreamAgentRequest:
         assert chunks == ["Hi", " there"]
         assert client._agent_runs == {}
 
-        client._gateway.send_request.assert_called_once()  # type: ignore[attr-defined]
-        params = client._gateway.send_request.call_args.kwargs["params"]  # type: ignore[attr-defined]
+        params = client._gateway.send_request.call_args_list[-1].kwargs["params"]  # type: ignore[attr-defined]
         assert params["idempotencyKey"] == "fixed"
         assert "options" not in params
 
@@ -639,6 +664,35 @@ class TestConnectSnapshot:
     def test_defaults_empty(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         assert client.connect_snapshot == {}
+
+
+class TestAgentScope:
+    @pytest.mark.asyncio
+    async def test_gateway_default_scopes_proactive_subscription(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None, session_key="voice")
+        client._gateway.send_request = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=[
+                {"payload": {"defaultId": "main"}},
+                {"payload": {}},
+            ]
+        )
+
+        await client._subscribe_session_messages()
+
+        calls = client._gateway.send_request.call_args_list  # type: ignore[attr-defined]
+        assert calls[0].args == ("agents.list",)
+        assert calls[1].args == (
+            "sessions.messages.subscribe",
+            {"key": "agent:main:voice"},
+        )
+
+    def test_reconnect_invalidates_resolved_gateway_default(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        client._resolved_agent_id = "main"
+
+        client._on_gateway_connected()
+
+        assert client._resolved_agent_id is None
 
 
 class TestPresence:

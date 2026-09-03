@@ -80,7 +80,9 @@ through your smart-home voice assistant.
 - **Resilient** — keepalive pings, automatic reconnect, reauth flow, and HA repair
   issues when a token/pairing needs attention.
 - **Sessions & agent routing** — route HA conversations to a specific OpenClaw
-  session and/or agent; switch sessions on the fly. [Details ›](#sessions--agent-routing)
+  session and/or agent; when no agent is selected, the integration safely scopes
+  the session to the gateway's default agent. Switch sessions on the fly.
+  [Details ›](#sessions--agent-routing)
 
 **Operations**
 - **Diagnostic entities** — gateway uptime, connected clients, health, and a
@@ -215,7 +217,7 @@ All of these are editable any time via **Settings → Devices & Services → Ope
 | **Use SSL** | Off | Use `wss://` (recommended for remote) |
 | **Agent Timeout** | `300` s | Max wait for an inline reply (5–600); deferred runs get a 1-hour budget instead |
 | **Session Key** | `main` | OpenClaw session to route HA conversations to |
-| **Agent** | gateway default | Route to a specific gateway agent (keys the session as `agent:<id>:<session>`) |
+| **Agent** | gateway default | Leave blank to resolve the gateway default, or select another agent; sessions are keyed as `agent:<id>:<session>` |
 | **Model override** | gateway default | Per-integration model (e.g. `anthropic/claude-...`) |
 | **Thinking mode** | gateway default | `off` / `low` / `medium` / `high` |
 | **Strip emojis from TTS** | On | Remove emojis from spoken output |
@@ -358,8 +360,10 @@ The **Session Key** routes HA conversations to a specific OpenClaw session:
   `automation`).
 
 Switch sessions dynamically without reconfiguring via `openclaw.set_session` (see
-[Services](#services)). If you run **multiple agents**, set the **Agent** option to
-route to one; the session is then keyed as `agent:<id>:<session>`.
+[Services](#services)). If you leave **Agent** blank, the integration asks the
+gateway for its default agent and keys the session as
+`agent:<default-id>:<session>`. Set **Agent** to route to a different one
+explicitly.
 
 ### Model & thinking overrides
 
@@ -510,6 +514,10 @@ being considered, [GATEWAY_API.md](GATEWAY_API.md) for the Gateway API reference
 and [AGENTS.md](AGENTS.md) for tuning agents for voice. Keep behavior changes
 opt-in or clearly called out — don't change defaults for existing users without a
 note.
+
+Maintainer releases are documented in [RELEASING.md](RELEASING.md). HACS tracks
+the newest published GitHub Release, not a bare Git tag, and the release tag must
+match the version in `custom_components/openclaw/manifest.json`.
 
 ## Credits & support
 

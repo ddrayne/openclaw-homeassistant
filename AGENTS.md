@@ -168,7 +168,9 @@ In the integration configuration, you specify which session to use:
 ```yaml
 session_key: "main"
 ```
-- HA conversations appear in your main OpenClaw session
+- With the **Agent** option blank, the integration resolves the gateway's
+  default agent and scopes this session automatically
+- HA conversations appear in that agent's main OpenClaw session
 - Shares context with other platforms (Telegram, Discord)
 - Full conversation history available
 

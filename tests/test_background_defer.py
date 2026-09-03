@@ -75,6 +75,7 @@ class _FakeEntry:
 def _make_env(mod, options: dict, timeout: float = 5.0):
     """Real client with a stubbed gateway transport; events drive the run."""
     client = mod.OpenClawGatewayClient("localhost", 1, None, timeout=timeout)
+    client._resolved_agent_id = "main"
 
     async def _fake_send_request(method=None, params=None, timeout=None, **_kw):
         return {"payload": {"runId": RUN_ID}}

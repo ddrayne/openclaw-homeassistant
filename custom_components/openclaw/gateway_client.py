@@ -164,6 +164,8 @@ class OpenClawGatewayClient:
         self._timeout = timeout
         self._session_key = session_key
         self._agent_id = agent_id
+        self._resolved_agent_id: str | None = None
+        self._agent_scope_lock = asyncio.Lock()
         self._model = model
         self._thinking = thinking
         self._agent_runs: dict[str, AgentRun] = {}
@@ -259,15 +261,39 @@ class OpenClawGatewayClient:
 
     @property
     def _effective_session_key(self) -> str:
-        """Build the session key, prefixed with agent ID when configured."""
-        if self._agent_id:
-            return f"agent:{self._agent_id}:{self._session_key}"
+        """Build the session key, prefixed with the selected agent ID."""
+        agent_id = self._agent_id or self._resolved_agent_id
+        if agent_id:
+            return f"agent:{agent_id}:{self._session_key}"
         return self._session_key
+
+    async def _ensure_agent_scope(self) -> None:
+        """Resolve the gateway default agent for an unscoped session."""
+        if self._agent_id or self._resolved_agent_id:
+            return
+        async with self._agent_scope_lock:
+            if self._agent_id or self._resolved_agent_id:
+                return
+            try:
+                response = await self._gateway.send_request(
+                    "agents.list", timeout=5.0
+                )
+            except Exception as err:  # pylint: disable=broad-except
+                # Older gateways accept unscoped session keys and may not
+                # expose agents.list, so retain the legacy fallback.
+                _LOGGER.debug(
+                    "Could not resolve the gateway default agent: %s", err
+                )
+                return
+            default_id = response.get("payload", {}).get("defaultId")
+            if isinstance(default_id, str) and default_id.strip():
+                self._resolved_agent_id = default_id.strip()
 
     async def _start_agent_run(
         self, message: str, idempotency_key: str, *, stream: bool = False
     ) -> AgentRun:
         """Send the agent request and return a tracked AgentRun."""
+        await self._ensure_agent_scope()
         # Mark local activity so proactive voice suppresses the session echo.
         self._last_local_turn = time.monotonic()
         options: dict[str, Any] = {}
@@ -629,6 +655,8 @@ class OpenClawGatewayClient:
 
     def _on_gateway_connected(self) -> None:
         """Re-issue the session subscription after every (re)connect."""
+        if not self._agent_id:
+            self._resolved_agent_id = None
         if self._proactive_callback is not None:
             self._schedule_subscribe()
 
@@ -638,6 +666,7 @@ class OpenClawGatewayClient:
     async def _subscribe_session_messages(self) -> None:
         """Subscribe to the watched session's message stream (operator.read)."""
         try:
+            await self._ensure_agent_scope()
             await self._gateway.send_request(
                 "sessions.messages.subscribe",
                 {"key": self._effective_session_key},
