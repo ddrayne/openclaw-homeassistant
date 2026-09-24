@@ -4,9 +4,7 @@ Covers both the pure helper and the three end-to-end paths through
 `OpenClawConversationEntity._async_handle_message`:
 
 - non-streaming
-- streaming via setattr on ConversationResult (primary path)
-- streaming via StreamingConversationResult (fallback path) — regression test
-  for a bug where the generator's finally block mutated the wrong object.
+- streaming via ChatLog.async_add_delta_content_stream (HA 2025.6+)
 """
 
 from __future__ import annotations
@@ -100,11 +98,18 @@ async def test_non_streaming_no_followup_on_statement() -> None:
     assert result.continue_conversation is False
 
 
-# ---------- streaming, primary path (setattr on ConversationResult) ----------
+# ---------- streaming via ChatLog deltas ----------
 
 
-async def test_streaming_primary_path_sets_continue() -> None:
-    conv = load_conversation_module(streaming="primary")
+async def test_supports_streaming_detects_chatlog_api() -> None:
+    conv = load_conversation_module(streaming="chatlog")
+    assert conv.OpenClawConversationEntity._supports_streaming_result() is True
+    conv = load_conversation_module(streaming="none")
+    assert conv.OpenClawConversationEntity._supports_streaming_result() is False
+
+
+async def test_streaming_sets_continue_on_question() -> None:
+    conv = load_conversation_module(streaming="chatlog")
     gateway = _make_gateway()
 
     async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
@@ -114,19 +119,22 @@ async def test_streaming_primary_path_sets_continue() -> None:
     gateway.stream_agent_request = fake_stream
 
     entity = conv.OpenClawConversationEntity(_make_entry(), gateway)
-    result = await entity._async_handle_message(_make_user_input(), FakeChatLog())
+    chat_log = conv.conversation.ChatLog()
+    result = await entity._async_handle_message(_make_user_input(), chat_log)
 
-    # Sanity: the primary path returns the original ConversationResult with
-    # the async generator attached as `response_stream`.
-    assert hasattr(result, "response_stream")
-    async for _ in result.response_stream:
-        pass
-
+    # Each Gateway chunk reaches the chat log as its own delta, so HA's
+    # pipeline can start streaming TTS before the reply is complete.
+    assert chat_log.deltas == [
+        {"role": "assistant"},
+        {"content": "Here you go. "},
+        {"content": "Want more detail?"},
+    ]
+    assert result.response.speech == "Here you go. Want more detail?"
     assert result.continue_conversation is True
 
 
-async def test_streaming_primary_path_no_followup() -> None:
-    conv = load_conversation_module(streaming="primary")
+async def test_streaming_no_followup_on_statement() -> None:
+    conv = load_conversation_module(streaming="chatlog")
     gateway = _make_gateway()
 
     async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
@@ -136,38 +144,98 @@ async def test_streaming_primary_path_no_followup() -> None:
     gateway.stream_agent_request = fake_stream
 
     entity = conv.OpenClawConversationEntity(_make_entry(), gateway)
-    result = await entity._async_handle_message(_make_user_input(), FakeChatLog())
-    async for _ in result.response_stream:
-        pass
+    result = await entity._async_handle_message(
+        _make_user_input(), conv.conversation.ChatLog()
+    )
 
+    assert result.response.speech == "All set. Task complete."
     assert result.continue_conversation is False
 
 
-# ---------- streaming, fallback path (regression test for the bug fix) ----------
-
-
-async def test_streaming_fallback_path_sets_continue_on_returned_object() -> None:
-    conv = load_conversation_module(streaming="fallback")
+async def test_streaming_strips_emojis_per_chunk() -> None:
+    conv = load_conversation_module(streaming="chatlog")
     gateway = _make_gateway()
 
     async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
-        for chunk in ("Sure. ", "Need anything else?"):
+        for chunk in ("Done ", "😀", " for today."):
             yield chunk
 
     gateway.stream_agent_request = fake_stream
 
+    entry = _make_entry()
+    entry.data["strip_emojis"] = True
+    entity = conv.OpenClawConversationEntity(entry, gateway)
+    chat_log = conv.conversation.ChatLog()
+    result = await entity._async_handle_message(_make_user_input(), chat_log)
+
+    # The emoji-only chunk is dropped; whitespace between chunks survives.
+    assert chat_log.deltas == [
+        {"role": "assistant"},
+        {"content": "Done "},
+        {"content": " for today."},
+    ]
+    assert result.response.speech == "Done  for today."
+
+
+async def test_streaming_error_before_content_speaks_fallback() -> None:
+    conv = load_conversation_module(streaming="chatlog")
+    from custom_components.openclaw.exceptions import GatewayTimeoutError
+
+    gateway = _make_gateway()
+
+    async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
+        raise GatewayTimeoutError("slow")
+        yield  # pragma: no cover - makes this an async generator
+
+    gateway.stream_agent_request = fake_stream
+
     entity = conv.OpenClawConversationEntity(_make_entry(), gateway)
-    result = await entity._async_handle_message(_make_user_input(), FakeChatLog())
+    result = await entity._async_handle_message(
+        _make_user_input(), conv.conversation.ChatLog()
+    )
 
-    # Fallback path must return the StreamingConversationResult instance,
-    # not the original ConversationResult.
-    assert type(result).__name__ == "StreamingConversationResult"
-    async for _ in result.response_stream:
-        pass
+    assert result.response.speech == "The response took too long. Please try again."
+    assert result.continue_conversation is False
 
-    # Before the fix this was `False` because the generator's finally block
-    # mutated a different object than the one returned to HA.
-    assert result.continue_conversation is True
+
+async def test_streaming_error_after_content_keeps_partial_reply() -> None:
+    conv = load_conversation_module(streaming="chatlog")
+    from custom_components.openclaw.exceptions import GatewayConnectionError
+
+    gateway = _make_gateway()
+
+    async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
+        yield "Partial answer."
+        raise GatewayConnectionError("dropped")
+
+    gateway.stream_agent_request = fake_stream
+
+    entity = conv.OpenClawConversationEntity(_make_entry(), gateway)
+    result = await entity._async_handle_message(
+        _make_user_input(), conv.conversation.ChatLog()
+    )
+
+    assert result.response.speech == "Partial answer."
+
+
+async def test_streaming_skipped_when_tts_trimming_enabled() -> None:
+    conv = load_conversation_module(streaming="chatlog")
+    gateway = _make_gateway()
+
+    async def fake_send(_message: str, **_kw) -> str:
+        return "A rather long answer"
+
+    gateway.send_agent_request = fake_send
+
+    entry = _make_entry()
+    entry.data["tts_max_chars"] = 8
+    entity = conv.OpenClawConversationEntity(entry, gateway)
+    chat_log = conv.conversation.ChatLog()
+    result = await entity._async_handle_message(_make_user_input(), chat_log)
+
+    # Trimming needs the full text, so the plain (buffered) path is used.
+    assert chat_log.deltas == []
+    assert result.response.speech == "A rat..."
 
 
 # ---------- error path ----------
