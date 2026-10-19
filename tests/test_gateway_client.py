@@ -769,3 +769,68 @@ class TestPresence:
         client._handle_presence_event({"payload": {}})
 
         assert client.presence == {"clients": ["existing"]}
+
+
+class TestEarlyAgentEvents:
+    """The Gateway may publish text and terminal events before its agent RPC ack."""
+
+    @pytest.mark.asyncio
+    async def test_fast_run_finishes_before_ack(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None, agent_id="main")
+
+        async def send_before_ack(*_args, **_kwargs):
+            client._handle_agent_event(
+                {"payload": {"runId": "fast-run", "output": "Finished"}}
+            )
+            client._handle_agent_event(
+                {
+                    "payload": {
+                        "runId": "fast-run",
+                        "stream": "lifecycle",
+                        "data": {"phase": "end"},
+                    }
+                }
+            )
+            return {"payload": {"runId": "fast-run"}}
+
+        client._gateway.send_request = AsyncMock(side_effect=send_before_ack)
+        result = await asyncio.wait_for(client.send_agent_request("hello"), 1.0)
+        assert result == "Finished"
+        assert client._agent_runs == {}
+        assert client._early_agent_events == {}
+        assert client._pending_agent_starts == 0
+
+    @pytest.mark.asyncio
+    async def test_fast_stream_replays_chunks_and_terminal_event(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None, agent_id="main")
+
+        async def send_before_ack(*_args, **_kwargs):
+            for output in ("Hello", "Hello world"):
+                client._handle_agent_event(
+                    {"payload": {"runId": "fast-stream", "output": output}}
+                )
+            client._handle_agent_event(
+                {
+                    "payload": {
+                        "runId": "fast-stream",
+                        "stream": "lifecycle",
+                        "data": {"phase": "end"},
+                    }
+                }
+            )
+            return {"payload": {"runId": "fast-stream"}}
+
+        client._gateway.send_request = AsyncMock(side_effect=send_before_ack)
+        chunks = [
+            chunk async for chunk in client.stream_agent_request("hello")
+        ]
+        assert chunks == ["Hello", " world"]
+        assert client._agent_runs == {}
+        assert client._early_agent_events == {}
+
+    def test_orphans_are_not_cached_without_pending_start(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        client._handle_agent_event(
+            {"payload": {"runId": "unrelated", "status": "ok"}}
+        )
+        assert client._early_agent_events == {}
