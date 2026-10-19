@@ -17,8 +17,8 @@ import pytest
 from tests._conversation_loader import load_conversation_module
 
 # Two module instances so both fast-path presentations are covered:
-# streaming-capable HA (response_stream) and plain-result HA.
-_conv_stream = load_conversation_module(streaming="primary")
+# streaming-capable HA (ChatLog deltas) and plain-result HA.
+_conv_stream = load_conversation_module(streaming="chatlog")
 _conv_plain = load_conversation_module(streaming="none")
 
 RUN_ID = "r1"
@@ -74,6 +74,9 @@ class _FakeEntry:
 
 def _make_env(mod, options: dict, timeout: float = 5.0):
     """Real client with a stubbed gateway transport; events drive the run."""
+    # Tests parametrized with _conv_stream explicitly opt in; normal installs
+    # retain the reliable complete-response path by default.
+    options = {**options, "streaming_enabled": mod is _conv_stream}
     client = mod.OpenClawGatewayClient("localhost", 1, None, timeout=timeout)
     client._resolved_agent_id = "main"
 
@@ -115,15 +118,24 @@ class TestFastPath:
     @pytest.mark.asyncio
     async def test_streaming_result_streams_inline(self) -> None:
         client, entity = _make_env(_conv_stream, {"background_grace": 0.5})
-        task = _start(_conv_stream, entity)
+        chat_log = _conv_stream.conversation.ChatLog()
+        task = asyncio.create_task(
+            entity._async_handle_message(_user_input(_conv_stream), chat_log)
+        )
         await asyncio.sleep(0.01)
         client._handle_agent_event(_output_event(RUN_ID, "Quick answer"))
-        result = await asyncio.wait_for(task, 2)
+        await asyncio.sleep(0.01)
 
-        assert getattr(result, "response_stream", None) is not None
+        # The first chunk reaches the chat log while the run is still going,
+        # which is what lets HA start streaming TTS early.
+        assert not task.done()
+        assert chat_log.deltas == [
+            {"role": "assistant"},
+            {"content": "Quick answer"},
+        ]
+
         client._handle_agent_event(_done_event(RUN_ID))
-        chunks = [c async for c in result.response_stream]
-        assert chunks == ["Quick answer"]
+        result = await asyncio.wait_for(task, 2)
         assert result.response.speech == "Quick answer"
         assert entity.hass.services.calls == []
 

@@ -12,6 +12,7 @@ DEFAULT_MODEL = None
 DEFAULT_THINKING = None
 DEFAULT_STRIP_EMOJIS = True  # Strip emojis from TTS by default
 DEFAULT_TTS_MAX_CHARS = 0  # 0 disables TTS trimming
+DEFAULT_STREAMING_ENABLED = False  # Only enable ChatLog streaming when explicitly opted in
 DEFAULT_AGENT_ID = None  # Use gateway default agent
 
 # Proactive voice: speak agent-initiated turns (cron/background/follow-ups) on a
@@ -51,6 +52,7 @@ CONF_MODEL = "model"
 CONF_THINKING = "thinking"
 CONF_STRIP_EMOJIS = "strip_emojis"
 CONF_TTS_MAX_CHARS = "tts_max_chars"
+CONF_STREAMING_ENABLED = "streaming_enabled"
 CONF_PROACTIVE_ENABLED = "proactive_enabled"
 CONF_PROACTIVE_SATELLITE = "proactive_satellite"
 CONF_PROACTIVE_MODE = "proactive_mode"

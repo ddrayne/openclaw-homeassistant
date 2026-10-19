@@ -71,6 +71,52 @@ class TestAgentRun:
         assert chunks == ["Final answer"]
 
     @pytest.mark.asyncio
+    async def test_final_summary_appends_missing_suffix(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.add_delta("Home")
+        run.set_complete("ok", "Home Assistant automatise la maison.")
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["Home", " Assistant automatise la maison."]
+        assert "".join(chunks) == run.get_response()
+
+    @pytest.mark.asyncio
+    async def test_final_summary_replaces_nonprefix_content(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.add_delta("Home")
+        run.set_complete("ok", "La domotique contrôle la maison.")
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks[0] == "Home"
+        assert isinstance(chunks[1], _gateway_client.AgentTextReplacement)
+        assert chunks[1].text == run.get_response()
+
+    @pytest.mark.asyncio
+    async def test_final_summary_equal_to_stream_not_duplicated(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.add_delta("Home Assistant")
+        run.set_complete("ok", "Home Assistant")
+        assert [chunk async for chunk in run.iter_stream(timeout=1.0)] == ["Home Assistant"]
+
+    @pytest.mark.asyncio
+    async def test_empty_summary_preserves_buffered_reply(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.add_delta("Home Assistant")
+        run.set_complete("ok", "")
+        assert run.get_response() == "Home Assistant"
+        assert [chunk async for chunk in run.iter_stream(timeout=1.0)] == [
+            "Home Assistant"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_no_final_summary_keeps_streamed_answer(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.add_delta("Home")
+        run.add_delta(" Assistant")
+        run.set_complete("ok", None)
+        assert [chunk async for chunk in run.iter_stream(timeout=1.0)] == [
+            "Home", " Assistant"
+        ]
+
+    @pytest.mark.asyncio
     async def test_error_summary_not_streamed_as_content(self) -> None:
         # On error the summary is an internal diagnostic; it must not be
         # streamed as spoken content (which would also suppress the friendly
@@ -81,7 +127,145 @@ class TestAgentRun:
         assert chunks == []
 
 
+class TestModernAssistantEvents:
+    def test_delta_after_initial_snapshot_builds_complete_response(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event({
+            "payload": {"runId": "run-1", "stream": "assistant",
+                        "data": {"text": "Home", "delta": "Home"}}
+        })
+        client._handle_agent_event({
+            "payload": {"runId": "run-1", "stream": "assistant",
+                        "data": {"delta": " Assistant"}}
+        })
+        client._handle_agent_event({
+            "payload": {"runId": "run-1", "stream": "assistant",
+                        "data": {"delta": " automatise la maison."}}
+        })
+        assert run.get_response() == "Home Assistant automatise la maison."
+
+    def test_authoritative_snapshot_already_includes_delta(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+        for data in (
+            {"text": "Hello", "delta": "Hello"},
+            {"text": "Hello world", "delta": " world"},
+            {"delta": "!"},
+            {"text": "Hello world!", "delta": "!"},
+        ):
+            client._handle_agent_event({
+                "payload": {"runId": "run-1", "stream": "assistant", "data": data}
+            })
+        assert run.get_response() == "Hello world!"
+
+    def test_replace_and_empty_retract_on_non_streaming_run(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+        def deliver(data):
+            client._handle_agent_event({
+                "payload": {"runId": "run-1", "stream": "assistant", "data": data}
+            })
+        deliver({"delta": "Draft"})
+        deliver({"replace": True, "delta": "Corrected"})
+        assert run.get_response() == "Corrected"
+        deliver({"replace": True, "delta": ""})
+        assert run.get_response() == ""
+        deliver({"text": "Final"})
+        assert run.get_response() == "Final"
+        deliver({"replace": True, "text": ""})
+        assert run.get_response() == ""
+
+    def test_ignores_delta_from_tool_stream(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+        client._handle_agent_event({
+            "payload": {"runId": "run-1", "stream": "tool",
+                        "data": {"delta": "secret tool output"}}
+        })
+        assert run.get_response() == ""
+
+    @pytest.mark.asyncio
+    async def test_streaming_yields_every_delta_once(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+        for data in (
+            {"text": "Home", "delta": "Home"},
+            {"delta": " Assistant"},
+            {"text": "Home Assistant est libre", "delta": " est libre"},
+            {"delta": "."},
+        ):
+            client._handle_agent_event({
+                "payload": {"runId": "run-1", "stream": "assistant", "data": data}
+            })
+        client._handle_agent_event({
+            "payload": {"runId": "run-1", "stream": "lifecycle",
+                        "data": {"phase": "end"}}
+        })
+        chunks = [chunk async for chunk in client.stream_run(run)]
+        assert chunks == ["Home", " Assistant", " est libre", "."]
+        assert "".join(chunks) == "Home Assistant est libre."
+        assert client._agent_runs == {}
+
+    @pytest.mark.asyncio
+    async def test_streamed_replacement_emits_corrected_message(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.add_delta("Draft")
+        run.replace_output("Corrected")
+        run.set_complete("ok")
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1)]
+        assert chunks[0] == "Draft"
+        assert isinstance(chunks[1], _gateway_client.AgentTextReplacement)
+        assert chunks[1].text == "Corrected"
+
 class TestHandleAgentEvent:
+    def test_result_payloads_reconcile_stream_and_include_all_messages(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event({
+            "payload": {"runId": "run-1", "stream": "assistant",
+                        "data": {"delta": "Home"}}
+        })
+        client._handle_agent_event({
+            "payload": {"runId": "run-1", "result": {
+                "payloads": [{"text": "Home Assistant"}, {"text": "Deuxième réponse."}]
+            }}
+        })
+        assert run.get_response() == "Home Assistant\n\nDeuxième réponse."
+
+    def test_item_scoped_snapshots_preserve_previous_items(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+        for data in (
+            {"itemId": "first", "text": "Hello", "delta": "Hello"},
+            {"itemId": "first", "delta": " world"},
+            {"itemId": "second", "text": "Second"},
+            {"itemId": "second", "delta": " item"},
+        ):
+            client._handle_agent_event({
+                "payload": {"runId": "run-1", "stream": "assistant", "data": data}
+            })
+        assert run.get_response() == "Hello world\n\nSecond item"
+
+    def test_per_item_status_does_not_complete_run(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+        client._handle_agent_event({
+            "payload": {"runId": "run-1", "stream": "assistant",
+                        "status": "ok", "data": {"itemId": "one"}}
+        })
+        assert not run.complete_event.is_set()
+
     def test_buffers_output_from_data_text(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         run = AgentRun("run-1")
@@ -718,3 +902,68 @@ class TestPresence:
         client._handle_presence_event({"payload": {}})
 
         assert client.presence == {"clients": ["existing"]}
+
+
+class TestEarlyAgentEvents:
+    """The Gateway may publish text and terminal events before its agent RPC ack."""
+
+    @pytest.mark.asyncio
+    async def test_fast_run_finishes_before_ack(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None, agent_id="main")
+
+        async def send_before_ack(*_args, **_kwargs):
+            client._handle_agent_event(
+                {"payload": {"runId": "fast-run", "output": "Finished"}}
+            )
+            client._handle_agent_event(
+                {
+                    "payload": {
+                        "runId": "fast-run",
+                        "stream": "lifecycle",
+                        "data": {"phase": "end"},
+                    }
+                }
+            )
+            return {"payload": {"runId": "fast-run"}}
+
+        client._gateway.send_request = AsyncMock(side_effect=send_before_ack)
+        result = await asyncio.wait_for(client.send_agent_request("hello"), 1.0)
+        assert result == "Finished"
+        assert client._agent_runs == {}
+        assert client._early_agent_events == {}
+        assert client._pending_agent_starts == 0
+
+    @pytest.mark.asyncio
+    async def test_fast_stream_replays_chunks_and_terminal_event(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None, agent_id="main")
+
+        async def send_before_ack(*_args, **_kwargs):
+            for output in ("Hello", "Hello world"):
+                client._handle_agent_event(
+                    {"payload": {"runId": "fast-stream", "output": output}}
+                )
+            client._handle_agent_event(
+                {
+                    "payload": {
+                        "runId": "fast-stream",
+                        "stream": "lifecycle",
+                        "data": {"phase": "end"},
+                    }
+                }
+            )
+            return {"payload": {"runId": "fast-stream"}}
+
+        client._gateway.send_request = AsyncMock(side_effect=send_before_ack)
+        chunks = [
+            chunk async for chunk in client.stream_agent_request("hello")
+        ]
+        assert chunks == ["Hello", " world"]
+        assert client._agent_runs == {}
+        assert client._early_agent_events == {}
+
+    def test_orphans_are_not_cached_without_pending_start(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        client._handle_agent_event(
+            {"payload": {"runId": "unrelated", "status": "ok"}}
+        )
+        assert client._early_agent_events == {}

@@ -26,6 +26,7 @@ from .const import (
     CONF_PROACTIVE_SATELLITE,
     CONF_STRIP_EMOJIS,
     CONF_TTS_MAX_CHARS,
+    CONF_STREAMING_ENABLED,
     DEFAULT_BACKGROUND_ENABLED,
     DEFAULT_BACKGROUND_GRACE,
     DEFAULT_HOLDING_PHRASE,
@@ -33,6 +34,7 @@ from .const import (
     DEFAULT_PROACTIVE_MODE,
     DEFAULT_STRIP_EMOJIS,
     DEFAULT_TTS_MAX_CHARS,
+    DEFAULT_STREAMING_ENABLED,
     DOMAIN,
     PROACTIVE_MODE_START_CONVERSATION,
 )
@@ -42,7 +44,7 @@ from .exceptions import (
     GatewayConnectionError,
     GatewayTimeoutError,
 )
-from .gateway_client import AgentRun, OpenClawGatewayClient
+from .gateway_client import AgentRun, AgentTextReplacement, OpenClawGatewayClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -123,7 +125,12 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         self._config_entry = config_entry
         self._gateway_client = gateway_client
         self._attr_unique_id = config_entry.entry_id
-        self._attr_supports_streaming = self._supports_streaming_result()
+        options = {**config_entry.data, **config_entry.options}
+        self._attr_supports_streaming = (
+            options.get(CONF_STREAMING_ENABLED, DEFAULT_STREAMING_ENABLED)
+            and options.get(CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS) == 0
+            and self._supports_streaming_result()
+        )
         # Runs detached past the grace period, reporting back via announce.
         self._background_tasks: set[asyncio.Task] = set()
 
@@ -204,21 +211,16 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
 
     @staticmethod
     def _supports_streaming_result() -> bool:
-        """Return whether the HA conversation result supports streaming."""
-        if hasattr(conversation, "StreamingConversationResult"):
-            return True
-        result_cls = getattr(conversation, "ConversationResult", None)
-        if result_cls is None:
-            return False
-        annotations = getattr(result_cls, "__annotations__", {})
-        if "response_stream" in annotations:
-            return True
-        if hasattr(result_cls, "response_stream"):
-            return True
-        slots = getattr(result_cls, "__slots__", ())
-        if isinstance(slots, str):
-            return slots == "response_stream"
-        return "response_stream" in slots
+        """Return whether HA supports streaming via ChatLog deltas.
+
+        HA streams LLM output into TTS through
+        ChatLog.async_add_delta_content_stream (2025.6+); there is no
+        streaming ConversationResult API.
+        """
+        chat_log_cls = getattr(conversation, "ChatLog", None)
+        return hasattr(chat_log_cls, "async_add_delta_content_stream") and hasattr(
+            conversation, "async_get_result_from_chat_log"
+        )
 
     @property
     def device_info(self) -> dict[str, Any]:
@@ -244,6 +246,9 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             "thinking": self._gateway_client.thinking,
             "strip_emojis": data.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS),
             "tts_max_chars": data.get(CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS),
+            "streaming_enabled": data.get(
+                CONF_STREAMING_ENABLED, DEFAULT_STREAMING_ENABLED
+            ),
             "proactive_enabled": data.get(
                 CONF_PROACTIVE_ENABLED, DEFAULT_PROACTIVE_ENABLED
             ),
@@ -285,7 +290,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
                     user_input, chat_log, user_message, config
                 )
 
-            streaming_result = self._build_streaming_result(
+            streaming_result = await self._build_streaming_result(
                 user_input, chat_log, user_message
             )
             if streaming_result is not None:
@@ -380,7 +385,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
                 user_input, chat_log, agent_run, config
             )
 
-        streaming_result = self._build_streaming_result(
+        streaming_result = await self._build_streaming_result(
             user_input,
             chat_log,
             user_message,
@@ -390,15 +395,14 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             return streaming_result
 
         # No streaming support: drain to completion and answer plainly.
-        chunks = [first_chunk] if first_chunk else []
-        async for chunk in self._gateway_client.stream_run(agent_run):
-            chunks.append(chunk)
-        response_text = agent_run.get_response() or "".join(chunks)
+        async for _chunk in self._gateway_client.stream_run(agent_run):
+            pass
+        response_text = agent_run.get_response()
         return self._build_plain_result(user_input, chat_log, response_text)
 
     async def _resume_stream(
-        self, agent_run: AgentRun, first_chunk: str | None
-    ) -> AsyncIterator[str]:
+        self, agent_run: AgentRun, first_chunk: str | AgentTextReplacement | None
+    ) -> AsyncIterator[str | AgentTextReplacement]:
         """Re-yield the peeked first chunk, then the rest of the run."""
         if first_chunk:
             yield first_chunk
@@ -499,151 +503,106 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         config = {**self._config_entry.data, **self._config_entry.options}
         return config.get(CONF_PROACTIVE_SATELLITE)
 
-    def _build_streaming_result(
+    async def _build_streaming_result(
         self,
         user_input: conversation.ConversationInput,
         chat_log: conversation.ChatLog,
         user_message: str,
-        chunk_source: AsyncIterator[str] | None = None,
+        chunk_source: AsyncIterator[str | AgentTextReplacement] | None = None,
     ) -> conversation.ConversationResult | None:
-        """Build a streaming conversation result when supported."""
+        """Stream the reply into the chat log so HA can start TTS early.
+
+        Returns None when streaming is unavailable (or TTS trimming is on,
+        which needs the full text), so callers fall back to a plain result.
+        """
+        config = {**self._config_entry.data, **self._config_entry.options}
+        # Assist text sessions must be able to wait for the final answer; the
+        # optional ChatLog streaming path is not reliable on every HA client.
+        if not config.get(CONF_STREAMING_ENABLED, DEFAULT_STREAMING_ENABLED):
+            return None
         if not self._supports_streaming_result():
             return None
-
-        intent_response = intent.IntentResponse(language=user_input.language)
-        result = conversation.ConversationResult(
-            response=intent_response,
-            conversation_id=user_input.conversation_id,
-        )
-        # Shared reference so _stream_response's finally block can mutate
-        # whichever object actually gets returned below — including the
-        # replacement built by the StreamingConversationResult fallback.
-        result_ref: list[conversation.ConversationResult] = [result]
-        response_stream = self._stream_response(
-            user_input,
-            chat_log,
-            user_message,
-            intent_response,
-            result_ref,
-            chunk_source,
-        )
-
-        try:
-            setattr(result, "response_stream", response_stream)
-            return result
-        except AttributeError:
-            pass
-
-        streaming_cls = getattr(conversation, "StreamingConversationResult", None)
-        if streaming_cls is None:
+        if config.get(CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS) > 0:
             return None
 
-        init_attempts = [
-            {
-                "response": intent_response,
-                "conversation_id": user_input.conversation_id,
-                "response_stream": response_stream,
-            },
-            {
-                "response": intent_response,
-                "conversation_id": user_input.conversation_id,
-                "stream": response_stream,
-            },
-            {
-                "response": intent_response,
-                "conversation_id": user_input.conversation_id,
-                "async_stream": response_stream,
-            },
-        ]
-        for kwargs in init_attempts:
-            try:
-                streamed = streaming_cls(**kwargs)
-            except TypeError:
-                continue
-            result_ref[0] = streamed
-            return streamed
-
-        try:
-            streamed = streaming_cls(
-                intent_response, user_input.conversation_id, response_stream
-            )
-        except TypeError:
-            _LOGGER.debug(
-                "StreamingConversationResult signature not supported by this HA version"
-            )
-            return None
-        result_ref[0] = streamed
-        return streamed
-
-    async def _stream_response(
-        self,
-        user_input: conversation.ConversationInput,
-        chat_log: conversation.ChatLog,
-        user_message: str,
-        intent_response: intent.IntentResponse,
-        result_ref: list[conversation.ConversationResult],
-        chunk_source: AsyncIterator[str] | None = None,
-    ) -> AsyncIterator[str]:
-        """Stream response chunks from the Gateway."""
         if chunk_source is None:
             chunk_source = self._gateway_client.stream_agent_request(
                 user_message
             )
-        chunks: list[str] = []
+        response_text = ""
+        async for content in chat_log.async_add_delta_content_stream(
+            user_input.agent_id,
+            self._stream_deltas(
+                chunk_source,
+                config.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS),
+            ),
+        ):
+            if isinstance(content, conversation.AssistantContent):
+                response_text = content.content or ""
+
+        result = conversation.async_get_result_from_chat_log(user_input, chat_log)
+        _set_continue_conversation(result, response_expects_followup(response_text))
+        return result
+
+    async def _stream_deltas(
+        self, chunk_source: AsyncIterator[str | AgentTextReplacement], should_strip: bool
+    ) -> AsyncIterator[dict[str, str]]:
+        """Translate Gateway chunks into ChatLog assistant deltas."""
+        yield {"role": "assistant"}
         had_content = False
         try:
             async for chunk in chunk_source:
+                if isinstance(chunk, AgentTextReplacement):
+                    corrected = (
+                        EMOJI_PATTERN.sub("", chunk.text)
+                        if should_strip else chunk.text
+                    )
+                    had_content = had_content or bool(corrected)
+                    # The ChatLog delta API cannot retract text. Starting a
+                    # new assistant item lets intent-end return the final text.
+                    yield {"role": "assistant", "content": corrected}
+                    continue
+                if chunk and should_strip:
+                    # No .strip(): whitespace between chunks must survive.
+                    chunk = EMOJI_PATTERN.sub("", chunk)
                 if chunk:
-                    chunks.append(chunk)
                     had_content = True
-                    yield chunk
+                    yield {"content": chunk}
         except GatewayAuthenticationError as err:
             _LOGGER.error("Gateway authentication error: %s", err)
             if not had_content:
-                message = (
-                    "The gateway token is no longer valid. Please update it in "
-                    "Settings, Devices and Services, OpenClaw, Configure."
-                )
-                chunks = [message]
-                yield message
+                yield {
+                    "content": (
+                        "The gateway token is no longer valid. Please update it in "
+                        "Settings, Devices and Services, OpenClaw, Configure."
+                    )
+                }
         except GatewayConnectionError as err:
             _LOGGER.error("Gateway connection error: %s", err)
             if not had_content:
-                message = (
-                    "I'm having trouble connecting to the Gateway. "
-                    "Please check your configuration."
-                )
-                chunks = [message]
-                yield message
+                yield {
+                    "content": (
+                        "I'm having trouble connecting to the Gateway. "
+                        "Please check your configuration."
+                    )
+                }
         except GatewayTimeoutError as err:
             _LOGGER.warning("Gateway timeout: %s", err)
             if not had_content:
-                message = "The response took too long. Please try again."
-                chunks = [message]
-                yield message
+                yield {"content": "The response took too long. Please try again."}
         except AgentExecutionError as err:
             _LOGGER.error("Agent execution error: %s", err)
             if not had_content:
-                message = (
-                    "I encountered an error while processing your request. "
-                    "Please try again."
-                )
-                chunks = [message]
-                yield message
+                yield {
+                    "content": (
+                        "I encountered an error while processing your request. "
+                        "Please try again."
+                    )
+                }
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected error in streaming response")
             if not had_content:
-                message = "An unexpected error occurred. Please try again."
-                chunks = [message]
-                yield message
-        finally:
-            response_text = "".join(chunks)
-            self._finalize_response(
-                user_input, chat_log, response_text, intent_response
-            )
-            _set_continue_conversation(
-                result_ref[0], response_expects_followup(response_text)
-            )
+                yield {"content": "An unexpected error occurred. Please try again."}
 
     def _finalize_response(
         self,

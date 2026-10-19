@@ -1,6 +1,7 @@
 """High-level OpenClaw Gateway API client."""
 
 import asyncio
+from dataclasses import dataclass
 import logging
 import time
 import uuid
@@ -19,6 +20,13 @@ from .gateway import GatewayProtocol
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class AgentTextReplacement:
+    """The authoritative text replaces previously streamed content."""
+
+    text: str
+
+
 class AgentRun:
     """Tracks an agent run and buffers its events."""
 
@@ -28,9 +36,13 @@ class AgentRun:
         self.status: str | None = None
         self.summary: str | None = None
         self.complete_event = asyncio.Event()
-        # Gateway sends cumulative text, not incremental
+        # Assistant text may arrive as cumulative snapshots or append deltas.
         self._full_text: str = ""
-        self._stream_queue: asyncio.Queue[str | None] | None = (
+        self._emitted_text: str = ""
+        self._assistant_item_id: str | None = None
+        self._assistant_item_prefix: str = ""
+        self._assistant_item_text: str = ""
+        self._stream_queue: asyncio.Queue[str | AgentTextReplacement | None] | None = (
             asyncio.Queue() if stream else None
         )
         self._streamed_any = False
@@ -64,22 +76,79 @@ class AgentRun:
                     len(self._full_text),
                 )
         else:
-            # Not cumulative (shouldn't happen), just replace
-            _LOGGER.warning(
-                "Non-cumulative text update for %s (was: %d, now: %d)",
-                self.run_id,
-                len(self._full_text),
-                len(output),
-            )
-            new_text = output
-            self._full_text = output
+            # An authoritative snapshot that is not an extension replaces the
+            # current assistant item rather than appending duplicate text.
+            self.replace_output(output)
+            return
 
-        if new_text and self._stream_queue is not None:
-            self._stream_queue.put_nowait(new_text)
-            self._streamed_any = True
+        if new_text:
+            self._publish_text()
+
+    def add_delta(self, delta: str) -> None:
+        """Append a Gateway assistant data.delta update."""
+        if not delta:
+            return
+        self._full_text += delta
+        self._publish_text()
+
+    def replace_output(self, output: str) -> None:
+        """Apply an authoritative replacement, including an empty retraction.
+
+        A streaming consumer cannot retract text already delivered to the
+        Home Assistant ChatLog. Signal that case explicitly instead of
+        appending a conflicting replacement to the visible answer.
+        """
+        self._full_text = output
+        self._publish_text()
+
+    def _publish_text(self) -> None:
+        """Queue new text, or a corrected message if the prefix changed."""
+        if self._stream_queue is None or self._emitted_text == self._full_text:
+            return
+        if self._full_text.startswith(self._emitted_text):
+            self._stream_queue.put_nowait(self._full_text[len(self._emitted_text):])
+        else:
+            self._stream_queue.put_nowait(AgentTextReplacement(self._full_text))
+        self._emitted_text = self._full_text
+        self._streamed_any = True
+
+    def add_assistant_event(self, data: dict[str, Any]) -> None:
+        """Reconstruct v4 item-scoped text, never double-counting snapshots."""
+        snapshot = data.get("text")
+        delta = data.get("delta")
+        if not isinstance(snapshot, str) and not isinstance(delta, str):
+            return
+
+        item_id = data.get("itemId")
+        replace = data.get("replace") is True
+        if not isinstance(item_id, str) or not item_id:
+            if isinstance(snapshot, str):
+                self.replace_output(snapshot)
+            elif replace:
+                self.replace_output(delta)
+            else:
+                self.add_delta(delta)
+            return
+
+        if item_id != self._assistant_item_id:
+            self._assistant_item_id = item_id
+            self._assistant_item_prefix = "" if replace else self._full_text
+            if self._assistant_item_prefix and not self._assistant_item_prefix.endswith("\n\n"):
+                self._assistant_item_prefix += "\n\n"
+            self._assistant_item_text = ""
+
+        if isinstance(snapshot, str):
+            self._assistant_item_text = snapshot
+        elif replace:
+            self._assistant_item_text = delta
+        else:
+            self._assistant_item_text += delta
+        self.replace_output(self._assistant_item_prefix + self._assistant_item_text)
 
     def set_complete(self, status: str, summary: str | None = None) -> None:
         """Mark run as complete."""
+        if self.complete_event.is_set():
+            return
         self.status = status
         self.summary = summary
         self.complete_event.set()
@@ -90,9 +159,17 @@ class AgentRun:
             # suppress the conversation entity's friendly error fallback.
             # stream_agent_request still raises on error status once the queue
             # drains, so the caller fails cleanly.
-            if status == "ok" and summary and not self._streamed_any:
-                self._stream_queue.put_nowait(summary)
-                self._streamed_any = True
+            if status == "ok" and summary:
+                self.replace_output(summary)
+            _LOGGER.debug(
+                "Run %s finished: status=%s, final_chars=%d, queued_chars=%d, "
+                "summary_present=%s",
+                self.run_id,
+                status,
+                len(self.get_response()) if status == "ok" else 0,
+                len(self._emitted_text),
+                bool(summary),
+            )
             self._stream_queue.put_nowait(None)
 
     def get_response(self) -> str:
@@ -101,7 +178,7 @@ class AgentRun:
             return self.summary
         return self._full_text
 
-    async def get_chunk(self, timeout: float) -> str | None:
+    async def get_chunk(self, timeout: float) -> str | AgentTextReplacement | None:
         """Await the next streamed chunk; None is the completion sentinel.
 
         Used to peek for first content during the grace race. Raises
@@ -117,7 +194,7 @@ class AgentRun:
             self._stream_done = True
         return chunk
 
-    async def iter_stream(self, timeout: float) -> AsyncIterator[str]:
+    async def iter_stream(self, timeout: float) -> AsyncIterator[str | AgentTextReplacement]:
         """Yield output chunks until completion or timeout.
 
         The timeout applies per-chunk: each new chunk resets the clock.
@@ -169,6 +246,11 @@ class OpenClawGatewayClient:
         self._model = model
         self._thinking = thinking
         self._agent_runs: dict[str, AgentRun] = {}
+        # Gateway events may arrive before the RPC acknowledgement returns
+        # their runId. Buffer them while agent starts are pending and replay
+        # after the run is registered.
+        self._pending_agent_starts = 0
+        self._early_agent_events: dict[str, list[dict[str, Any]]] = {}
 
         # Proactive voice: callback invoked with agent-initiated assistant text,
         # and a timestamp of the most recent local agent activity used to
@@ -302,29 +384,40 @@ class OpenClawGatewayClient:
         if self._thinking:
             options["thinking"] = self._thinking
 
-        response = await self._gateway.send_request(
-            method="agent",
-            params={
-                "message": message,
-                "sessionKey": self._effective_session_key,
-                "idempotencyKey": idempotency_key,
-                **options,
-            },
-            timeout=10.0,
-        )
+        self._pending_agent_starts += 1
+        try:
+            response = await self._gateway.send_request(
+                method="agent",
+                params={
+                    "message": message,
+                    "sessionKey": self._effective_session_key,
+                    "idempotencyKey": idempotency_key,
+                    **options,
+                },
+                timeout=10.0,
+            )
 
-        payload = response.get("payload", {})
-        run_id = payload.get("runId")
+            payload = response.get("payload", {})
+            run_id = payload.get("runId")
 
-        if not run_id:
-            raise AgentExecutionError("No runId in agent response")
+            if not run_id:
+                raise AgentExecutionError("No runId in agent response")
 
-        _LOGGER.debug("Agent run started: %s", run_id)
+            _LOGGER.debug("Agent run started: %s", run_id)
 
-        agent_run = AgentRun(run_id, stream=stream)
-        self._agent_runs[run_id] = agent_run
-        self._buffer_agent_payload(agent_run, payload)
-        return agent_run
+            agent_run = AgentRun(run_id, stream=stream)
+            self._agent_runs[run_id] = agent_run
+            self._buffer_agent_payload(agent_run, payload)
+            # Preserve arrival order, including any terminal lifecycle event.
+            # No await occurs between registration and replay.
+            for event in self._early_agent_events.pop(run_id, []):
+                self._handle_agent_event(event)
+            return agent_run
+        finally:
+            self._pending_agent_starts -= 1
+            if self._pending_agent_starts == 0:
+                # Unknown runs must not remain cached after pending starts.
+                self._early_agent_events.clear()
 
     async def send_agent_request(
         self, message: str, idempotency_key: str | None = None
@@ -446,7 +539,7 @@ class OpenClawGatewayClient:
         finally:
             self._agent_runs.pop(agent_run.run_id, None)
 
-    async def stream_run(self, agent_run: AgentRun) -> AsyncIterator[str]:
+    async def stream_run(self, agent_run: AgentRun) -> AsyncIterator[str | AgentTextReplacement]:
         """Consume an already-started run: yield chunks, raise on failure.
 
         Exactly one consumer per run — this owns cleanup of the run tracker.
@@ -476,7 +569,7 @@ class OpenClawGatewayClient:
 
     async def stream_agent_request(
         self, message: str, idempotency_key: str | None = None
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | AgentTextReplacement]:
         """
         Send agent request and stream response chunks.
 
@@ -516,18 +609,32 @@ class OpenClawGatewayClient:
         if not isinstance(data, dict):
             data = {}
 
-        output = payload.get("output")
-        if not output and "text" in data:
-            output = data.get("text")
-        if not output:
-            result = payload.get("result")
-            if isinstance(result, dict):
-                for item in result.get("payloads", []):
-                    if isinstance(item, dict) and item.get("text"):
-                        output = item["text"]
-                        break
+        # Modern v4 assistant events send incremental data.delta updates.
+        # data.text, when supplied, is an authoritative snapshot *including*
+        # the delta in the same event. Never append both.
+        stream = payload.get("stream")
+        if stream in (None, "assistant") and (
+            isinstance(data.get("text"), str)
+            or isinstance(data.get("delta"), str)
+        ):
+            agent_run.add_assistant_event(data)
+            return
 
-        if output:
+        # Final action results can supersede provisional assistant items.
+        result = payload.get("result")
+        if isinstance(result, dict) and isinstance(result.get("payloads"), list):
+            texts = [
+                item["text"]
+                for item in result["payloads"]
+                if isinstance(item, dict) and isinstance(item.get("text"), str)
+            ]
+            if texts:
+                agent_run.replace_output("\n\n".join(text for text in texts if text))
+                return
+
+        # Legacy gateways send cumulative top-level output.
+        output = payload.get("output")
+        if isinstance(output, str) and output:
             agent_run.add_output(output)
 
     @staticmethod
@@ -561,8 +668,21 @@ class OpenClawGatewayClient:
 
         agent_run = self._agent_runs.get(run_id)
         if not agent_run:
-            # Event for unknown run, might be from previous session
-            _LOGGER.debug("Agent event for unknown run: %s", run_id)
+            # A fast agent may have already produced its answer before the
+            # initial request ack reaches the client. Bound retained events
+            # because other sessions may also emit messages concurrently.
+            if self._pending_agent_starts:
+                if run_id not in self._early_agent_events:
+                    if len(self._early_agent_events) >= 16:
+                        self._early_agent_events.pop(next(iter(self._early_agent_events)))
+                    self._early_agent_events[run_id] = []
+                pending = self._early_agent_events[run_id]
+                if len(pending) >= 128:
+                    pending.pop(0)
+                pending.append(event)
+                _LOGGER.debug("Buffered early agent event for run %s", run_id)
+            else:
+                _LOGGER.debug("Agent event for unknown run: %s", run_id)
             return
 
         # Keep the proactive suppression window fresh while one of our own runs
@@ -593,8 +713,8 @@ class OpenClawGatewayClient:
         phase = data.get("phase")
         run_terminal = self._is_run_lifecycle_event(stream, data)
 
-        if status in ("ok", "error"):
-            # Legacy completion signalled by a top-level status field.
+        if status in ("ok", "error") and run_terminal:
+            # A per-item status must not complete the entire run.
             summary = payload.get("summary")
             agent_run.set_complete(status, summary)
             _LOGGER.info("Agent run %s completed with status: %s", run_id, status)

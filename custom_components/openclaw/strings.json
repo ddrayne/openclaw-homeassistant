@@ -72,6 +72,7 @@
           "thinking": "Thinking mode override (optional)",
           "strip_emojis": "Strip emojis from TTS speech",
           "tts_max_chars": "TTS max characters (0 = no limit)",
+          "streaming_enabled": "Streaming responses (experimental; turn off for complete text Assist replies)",
           "background_enabled": "Background work: answer slow requests via a later announcement instead of timing out",
           "background_grace": "Grace period (seconds of silence before deferring to background)",
           "holding_phrase": "Holding phrase spoken when a request is deferred",
