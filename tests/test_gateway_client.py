@@ -109,6 +109,53 @@ class TestHandleAgentEvent:
 
         assert run.get_response() == "Action complete"
 
+    def test_buffers_delta_only_assistant_events(self) -> None:
+        # Gateway 2026.10 sends cumulative text only on the first assistant
+        # event of a streamed message; follow-ups carry just the delta.
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        for data in (
+            {"text": "He", "delta": "He", "itemId": "i"},
+            {"delta": "ute leichter Regen,", "itemId": "i"},
+            {"delta": " vierzehn Grad.", "itemId": "i"},
+        ):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+
+        assert run.get_response() == "Heute leichter Regen, vierzehn Grad."
+
+    def test_ignores_delta_on_non_assistant_stream(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event(
+            {"payload": {"runId": "run-1", "stream": "assistant", "data": {"text": "Hi"}}}
+        )
+        client._handle_agent_event(
+            {"payload": {"runId": "run-1", "stream": "tool", "data": {"delta": "x"}}}
+        )
+
+        assert run.get_response() == "Hi"
+
+    @pytest.mark.asyncio
+    async def test_streams_delta_only_assistant_events(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        for data in ({"text": "He", "delta": "He"}, {"delta": "llo"}):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+        run.set_complete("ok", None)
+
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["He", "llo"]
+
     def test_marks_complete_with_summary(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         run = AgentRun("run-1")

@@ -95,6 +95,10 @@ class AgentRun:
                 self._streamed_any = True
             self._stream_queue.put_nowait(None)
 
+    def get_streamed_text(self) -> str:
+        """Return the assistant text buffered so far."""
+        return self._full_text
+
     def get_response(self) -> str:
         """Get assembled response."""
         if self.summary:
@@ -519,6 +523,12 @@ class OpenClawGatewayClient:
         output = payload.get("output")
         if not output and "text" in data:
             output = data.get("text")
+        if not output and payload.get("stream") == "assistant":
+            # Gateway 2026.10+ sends the cumulative ``text`` only on the first
+            # event of a streamed message; follow-ups carry just ``delta``.
+            delta = data.get("delta")
+            if isinstance(delta, str) and delta:
+                output = agent_run.get_streamed_text() + delta
         if not output:
             result = payload.get("result")
             if isinstance(result, dict):
