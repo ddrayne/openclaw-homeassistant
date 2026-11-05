@@ -67,6 +67,19 @@ _OPTION_KEYS = {
 }
 
 
+async def _async_disconnect_quietly(
+    gateway_client: OpenClawGatewayClient, entry: ConfigEntry
+) -> None:
+    """Stop a client whose setup failed without masking the real error."""
+    try:
+        await gateway_client.disconnect()
+    except Exception:  # pylint: disable=broad-except
+        _LOGGER.exception(
+            "Error disconnecting OpenClaw Gateway during setup of %s",
+            entry.entry_id,
+        )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OpenClaw from a config entry."""
     _LOGGER.info("Setting up OpenClaw integration")
@@ -116,11 +129,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry.data[CONF_HOST],
             entry.data[CONF_PORT],
         )
-    except GatewayAuthenticationError as err:
-        raise ConfigEntryAuthFailed(err) from err
-    except (GatewayConnectionError, GatewayTimeoutError) as err:
-        raise ConfigEntryNotReady(err) from err
-    except Exception as err:
+    except Exception as err:  # pylint: disable=broad-except
+        # Stop the connection loop before Home Assistant retries setup: it is
+        # already retrying on its own, and a client that never reached
+        # ``hass.data`` would otherwise keep reconnecting untracked while the
+        # next setup attempt creates another one.
+        await _async_disconnect_quietly(gateway_client, entry)
+        if isinstance(err, GatewayAuthenticationError):
+            raise ConfigEntryAuthFailed(err) from err
+        if isinstance(err, (GatewayConnectionError, GatewayTimeoutError)):
+            raise ConfigEntryNotReady(err) from err
         raise ConfigEntryNotReady(err) from err
 
     # Register runtime fatal error callback for repair issues
@@ -163,17 +181,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if not target:
                     _LOGGER.warning("Reconnect requested for unknown entry: %s", entry_id)
                     return
-                targets = [target]
+                targets = [(entry_id, target)]
             else:
                 targets = [
-                    client
+                    (key, client)
                     for key, client in clients.items()
                     if key not in (_SERVICE_REGISTERED, _PLATFORMS_LOADED)
                 ]
 
-            for client in targets:
-                await client.disconnect()
-                await client.connect()
+            for key, client in targets:
+                try:
+                    await client.disconnect()
+                    await client.connect()
+                except Exception as err:  # pylint: disable=broad-except
+                    # ``connect()`` gives up waiting after a few seconds while
+                    # its connection loop keeps retrying, so a still-recovering
+                    # Gateway is not a service failure - and one entry must not
+                    # stop the remaining entries from being reconnected.
+                    _LOGGER.warning(
+                        "Reconnect for entry %s is still in progress: %s", key, err
+                    )
 
         async_register_admin_service(
             hass,
@@ -268,10 +295,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         unload_ok = True
 
-    # Always disconnect and cleanup, even if unload failed
+    # Always disconnect and cleanup, even if unload failed. Teardown must not be
+    # able to fail the unload: an exception here used to make Home Assistant
+    # abandon the reload and ask for a restart instead.
     if gateway_client is not None:
-        await gateway_client.disconnect()
-        _LOGGER.info("Disconnected from OpenClaw Gateway")
+        try:
+            await gateway_client.disconnect()
+            _LOGGER.info("Disconnected from OpenClaw Gateway")
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Error disconnecting from OpenClaw Gateway")
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
 
     return unload_ok

@@ -20,8 +20,13 @@ from .const import (
     CLIENT_VERSION,
     DEVICE_ROLE,
     DEVICE_SCOPES,
+    MAX_BACKOFF_EXPONENT,
     PROTOCOL_MAX_VERSION,
     PROTOCOL_MIN_VERSION,
+    RETRY_BASE_SECONDS,
+    RETRY_MAX_SECONDS,
+    TASK_STOP_TIMEOUT_SECONDS,
+    UPGRADE_AUTH_RETRY_ATTEMPTS,
 )
 from .device_auth import async_load_or_create_keypair, build_device_auth_dict
 from .exceptions import (
@@ -104,10 +109,85 @@ class GatewayProtocol:
 
     async def connect(self) -> None:
         """Connect to the Gateway and perform handshake."""
-        if self._connect_task is not None:
+        if self._connect_task is not None and not self._connect_task.done():
             return
 
+        self._fatal_error = None
         self._connect_task = asyncio.create_task(self._connection_loop())
+        self._connect_task.add_done_callback(self._handle_connect_task_done)
+
+    def _handle_connect_task_done(self, task: asyncio.Task) -> None:
+        """Forget the connection loop once it has stopped.
+
+        ``_connection_loop`` returns when it gives up on a fatal error, and the
+        finished task used to stay in ``_connect_task``. Because ``connect()``
+        refuses to start a second loop, every later call - including the
+        ``openclaw.reconnect`` service and a config entry reload - became a
+        silent no-op, so a single fatal error could only be cleared by
+        restarting Home Assistant.
+        """
+        if self._connect_task is task:
+            self._connect_task = None
+
+    async def _cancel_and_await(self, task: asyncio.Task | None, name: str) -> None:
+        """Cancel a helper task and discard whatever it ended with.
+
+        A task does not have to end in ``CancelledError``: the receive task can
+        finish first with ``ConnectionClosedError`` when the Gateway closes the
+        socket (close code 1012 on a Gateway restart). Awaiting such a task
+        re-raises that error, which used to abort ``disconnect()`` and with it
+        every unload, reload and reconnect, leaving the entry wedged until Home
+        Assistant was restarted.
+        """
+        if task is None:
+            return
+        task.cancel()
+        # ``asyncio.wait`` is used deliberately instead of awaiting the task:
+        # awaiting it re-raises the task's own exception, and catching
+        # ``CancelledError`` around it swallows the *caller's* cancellation,
+        # which lets a cancelled connection loop carry on running untracked.
+        # The wait is bounded so teardown cannot hang on a task that ignores
+        # cancellation.
+        done, pending = await asyncio.wait(
+            {task}, timeout=TASK_STOP_TIMEOUT_SECONDS
+        )
+        if pending:
+            _LOGGER.warning(
+                "%s task did not stop within %.0fs",
+                name,
+                TASK_STOP_TIMEOUT_SECONDS,
+            )
+            return
+        if task.cancelled():
+            return
+        err = task.exception()
+        if err is not None:
+            _LOGGER.debug("%s task ended with %s: %s", name, type(err).__name__, err)
+
+    def _retry_delay(self, failures: int) -> float:
+        """Return the backoff delay for the given consecutive failure count.
+
+        The exponent is clamped before the shift: ``5 * 2 ** 1025`` overflows a
+        float long before ``min()`` can apply the ceiling, and an
+        ``OverflowError`` raised inside the loop's exception handler would stop
+        the loop without a fatal error after about seventeen hours of
+        continuous failures.
+        """
+        exponent = min(max(0, failures - 1), MAX_BACKOFF_EXPONENT)
+        return min(RETRY_MAX_SECONDS, RETRY_BASE_SECONDS * 2 ** exponent)
+
+    async def _stop_helper_tasks(self) -> None:
+        """Stop the receive and heartbeat tasks, tolerating any of their endings."""
+        for attr, name in (
+            ("_receive_task", "receive"),
+            ("_heartbeat_task", "heartbeat"),
+        ):
+            task = getattr(self, attr)
+            await self._cancel_and_await(task, name)
+            # Only clear the reference when it still points at the task that
+            # was just stopped, so a replacement is never dropped untracked.
+            if getattr(self, attr) is task:
+                setattr(self, attr, None)
 
     async def disconnect(self) -> None:
         """Disconnect from the Gateway."""
@@ -115,32 +195,24 @@ class GatewayProtocol:
         self._connected = False
         self._connected_event.clear()
 
-        # Cancel tasks
-        if self._receive_task:
-            self._receive_task.cancel()
-            try:
-                await self._receive_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._heartbeat_task:
-            self._heartbeat_task.cancel()
-            try:
-                await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._connect_task:
-            self._connect_task.cancel()
-            try:
-                await self._connect_task
-            except asyncio.CancelledError:
-                pass
+        # Stop the connection loop first: while it is alive it can reconnect and
+        # install fresh helper tasks, so cancelling only the stale references
+        # afterwards would leave the replacements running untracked.
+        connect_task = self._connect_task
+        await self._cancel_and_await(connect_task, "connection")
+        if self._connect_task is connect_task:
             self._connect_task = None
+
+        # Each helper may already have stopped with an error of its own, which
+        # must not prevent the rest of the teardown from running.
+        await self._stop_helper_tasks()
 
         # Close websocket
         if self._websocket:
-            await self._websocket.close()
+            try:
+                await self._websocket.close()
+            except Exception as err:  # pylint: disable=broad-except
+                _LOGGER.debug("Error closing WebSocket: %s", err)
             self._websocket = None
 
         # Fail all pending requests
@@ -153,7 +225,12 @@ class GatewayProtocol:
 
     async def _connection_loop(self) -> None:
         """Maintain connection with automatic reconnection."""
+        failures = 0
+        upgrade_auth_rejections = 0
+        clean_closes = 0
         while True:
+            clean_close = False
+            connected_at = 0.0
             try:
                 _LOGGER.info("Connecting to Gateway at %s", self._uri)
                 headers = {}
@@ -171,8 +248,12 @@ class GatewayProtocol:
                         await self._handshake()
                         self._connected = True
                         self._connected_event.set()
+                        failures = 0
+                        upgrade_auth_rejections = 0
+                        self._fatal_error = None
                         _LOGGER.info("Connected to Gateway successfully")
                         self._last_pong = time.monotonic()
+                        connected_at = time.monotonic()
 
                         # Start receive loop
                         self._receive_task = asyncio.create_task(
@@ -191,6 +272,11 @@ class GatewayProtocol:
                                     "on_connected callback failed"
                                 )
                         await self._receive_task
+                        # The receive loop also returns normally when the
+                        # Gateway accepts the connection and then closes it
+                        # without an error. Flag it so this iteration pauses
+                        # before reconnecting, after the helpers are stopped.
+                        clean_close = True
 
                     except GatewayAuthenticationError as err:
                         self._fatal_error = err
@@ -235,18 +321,7 @@ class GatewayProtocol:
                     finally:
                         self._connected = False
                         self._connected_event.clear()
-                        if self._receive_task:
-                            self._receive_task.cancel()
-                            try:
-                                await self._receive_task
-                            except asyncio.CancelledError:
-                                pass
-                        if self._heartbeat_task:
-                            self._heartbeat_task.cancel()
-                            try:
-                                await self._heartbeat_task
-                            except asyncio.CancelledError:
-                                pass
+                        await self._stop_helper_tasks()
                         self._websocket = None
 
             except asyncio.CancelledError:
@@ -263,28 +338,55 @@ class GatewayProtocol:
                 break
 
             except InvalidStatus as err:
-                if err.response.status_code in (401, 403):
-                    auth_err = GatewayAuthenticationError(
-                        f"Gateway rejected connection: HTTP {err.response.status_code}"
+                status = getattr(getattr(err, "response", None), "status_code", None)
+                if status in (401, 403):
+                    upgrade_auth_rejections += 1
+                    if upgrade_auth_rejections > UPGRADE_AUTH_RETRY_ATTEMPTS:
+                        auth_err = GatewayAuthenticationError(
+                            f"Gateway rejected connection: HTTP {status}"
+                        )
+                        self._fatal_error = auth_err
+                        _LOGGER.error(
+                            "Gateway authentication failed (HTTP %s) on %d "
+                            "consecutive attempts. Check that the token in "
+                            "Settings > Devices & Services > OpenClaw > "
+                            "Configure matches your gateway token (openclaw "
+                            "doctor --generate-gateway-token), then run the "
+                            "openclaw.reconnect service once the proxy or "
+                            "Gateway is back.",
+                            status,
+                            upgrade_auth_rejections,
+                        )
+                        if self._on_fatal_error:
+                            self._on_fatal_error(auth_err)
+                        break
+                    failures += 1
+                    delay = self._retry_delay(failures)
+                    _LOGGER.warning(
+                        "Gateway rejected the WebSocket upgrade with HTTP %s "
+                        "(attempt %d of %d). A Gateway or proxy restart can "
+                        "reject a valid token while it reloads; retrying in "
+                        "%.0fs.",
+                        status,
+                        upgrade_auth_rejections,
+                        UPGRADE_AUTH_RETRY_ATTEMPTS + 1,
+                        delay,
                     )
-                    self._fatal_error = auth_err
-                    _LOGGER.error(
-                        "Gateway authentication failed (HTTP %s). Check that "
-                        "the token in Settings > Devices & Services > OpenClaw "
-                        "> Configure matches your gateway token "
-                        "(openclaw doctor --generate-gateway-token)",
-                        err.response.status_code,
-                    )
-                    if self._on_fatal_error:
-                        self._on_fatal_error(auth_err)
-                    break
+                    await asyncio.sleep(delay)
+                    continue
+
+                failures += 1
+                delay = self._retry_delay(failures)
                 _LOGGER.warning(
-                    "Gateway rejected WebSocket upgrade: HTTP %s",
-                    err.response.status_code,
+                    "Gateway rejected WebSocket upgrade: HTTP %s (retrying in "
+                    "%.0fs)",
+                    status,
+                    delay,
                 )
-                await asyncio.sleep(5)
+                await asyncio.sleep(delay)
 
             except ConnectionClosedError as err:
+                failures += 1
                 if err.rcvd and err.rcvd.code == 1012:
                     # Service restart - this is normal, will reconnect
                     _LOGGER.info("Gateway is restarting, will reconnect")
@@ -294,13 +396,25 @@ class GatewayProtocol:
                         err.rcvd.reason if err.rcvd else "unknown",
                         err.rcvd.code if err.rcvd else "none",
                     )
-                await asyncio.sleep(5)
+                await asyncio.sleep(self._retry_delay(failures))
 
             except Exception as err:  # pylint: disable=broad-except
+                failures += 1
+                delay = self._retry_delay(failures)
                 _LOGGER.warning(
-                    "Connection failed, will retry: %s", err
+                    "Connection failed, will retry in %.0fs: %s", delay, err
                 )
-                await asyncio.sleep(5)  # Wait before reconnecting
+                await asyncio.sleep(delay)
+
+            if clean_close:
+                # Treat repeated short-lived sessions as a flap: without a
+                # pause, an address that accepts and immediately closes is
+                # reconnected at full speed, spinning the CPU and flooding the
+                # log. A session that lasted long enough is forgiven.
+                if time.monotonic() - connected_at >= RETRY_MAX_SECONDS:
+                    clean_closes = 0
+                clean_closes += 1
+                await asyncio.sleep(self._retry_delay(clean_closes))
 
     async def _handshake(self) -> None:
         """Perform connection handshake with authentication.
