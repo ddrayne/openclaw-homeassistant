@@ -1,9 +1,39 @@
 # Changelog
 
-## Unreleased
+## 1.9.0 — 2026-11-07
+
+### Added
+
+- **Streaming responses (opt-in).** A new **Streaming responses** option streams
+  replies into Home Assistant's chat log via `ChatLog.async_add_delta_content_stream`
+  (HA 2025.6+), so a voice pipeline starts speaking while the agent is still
+  writing. Previously the integration probed for a `response_stream` API that
+  Home Assistant never shipped, so streaming silently never ran (#14). Off by
+  default; needs **TTS max characters** at `0`. When streamed, an agent's
+  separate reply items (text before a tool call, then the answer) are separated
+  by a paragraph break instead of running together.
 
 ### Fixed
 
+- **Replies on OpenClaw 2026.10+ were cut to their first fragment** — Voice PE
+  speaking only "He" for "Heute leichter Regen…". Newer gateways send the text
+  snapshot only on an item's first event and `delta` alone afterwards; deltas
+  are now appended, including for a new `itemId` (#18, #19).
+- **Fast replies could be lost before the request was acknowledged.** When the
+  agent RPC's acknowledgement and the run's first events arrived together, the
+  events were handled before the run was registered and dropped, leaving the
+  request waiting for a completion that had already happened. They are now
+  buffered while an agent request is pending and replayed in order.
+- **A token a proxy keeps refusing (HTTP 401/403) now opens reauth at setup**
+  instead of retrying setup forever with "may not be reachable". Setup counts
+  refusals across its retries and gives up after the same budget as the
+  connection loop; the setup error now names the HTTP status.
+- **`wss://` connections no longer load certificates on the event loop.** The
+  TLS context is built once in a worker thread and reused, removing Home
+  Assistant's blocking-call warning on every connect.
+- **`openclaw.reconnect` reports an authentication failure as an error** with
+  the fix, instead of "still in progress".
+- **Multi-item replies no longer log a warning** ("Non-cumulative text update").
 - **A failed connection no longer disables the integration until Home Assistant
   restarts.** Three defects could combine into a permanent outage after a
   Gateway or reverse-proxy restart:
@@ -32,9 +62,20 @@
   `UPGRADE_AUTH_RETRY_ATTEMPTS` (4) times with backoff before a repair issue is
   raised, because a reverse proxy can reject a valid token for a few seconds
   while a Gateway or proxy restart reloads its configuration. A genuinely wrong
-  token is still reported, about 75 s later instead of immediately. Auth and
-  protocol errors returned *inside* the handshake remain fatal.
+  token is still reported: about 75 s later on a running entry, or after a few
+  setup retries at startup, instead of immediately. Auth and protocol errors
+  returned *inside* the handshake remain fatal.
 - **Transient reconnect failures back off from 5 s, doubling to a 60 s ceiling**,
   and the counters reset on a successful handshake. The first retry after a
   single Gateway restart is still 5 s; a Gateway that stays down produces at most
   one log line per minute instead of twelve.
+
+### Thanks
+
+- @lanquarden — connection recovery after Gateway/proxy restarts, with field
+  evidence and regression tests (#20, #21)
+- @chotaling1 — delta-only assistant events (#19)
+- @biacz — ChatLog streaming (#14), plus the captured gateway event sequence now
+  used as a regression test (#16)
+- @albaintor — buffering early agent events, and the opt-in streaming design
+  (#15)
