@@ -77,8 +77,10 @@ through your smart-home voice assistant.
 - **Direct WebSocket** — real-time, persistent connection to the OpenClaw Gateway.
 - **Token + device identity** — Gateway token plus an Ed25519 device keypair;
   remote devices approve once, local connections auto-approve.
-- **Resilient** — keepalive pings, automatic reconnect, reauth flow, and HA repair
-  issues when a token/pairing needs attention.
+- **Resilient** — keepalive pings, automatic reconnect with exponential backoff,
+  retries through a Gateway/proxy restart instead of giving up on the first
+  rejected upgrade, and HA repair issues when a token/pairing needs attention.
+  A stopped connection loop can always be revived with the `reconnect` service.
 - **Sessions & agent routing** — route HA conversations to a specific OpenClaw
   session and/or agent; when no agent is selected, the integration safely scopes
   the session to the gateway's default agent. Switch sessions on the fly.
@@ -112,7 +114,7 @@ thinking mode, and TTS/proactive settings as state attributes.
 
 | Service | Fields | Description |
 |---|---|---|
-| `openclaw.reconnect` | `entry_id` *(optional)* | Force a reconnect for one entry, or all entries if omitted. |
+| `openclaw.reconnect` | `entry_id` *(optional)* | Force a reconnect for one entry, or all entries if omitted. Restarts the connection loop even after it stopped on an authentication error, so it is the first thing to try when the gateway shows as unavailable. It returns after a short wait; if the Gateway is still coming back, the entries keep retrying in the background and each entry is attempted independently. |
 | `openclaw.set_session` | `session_key` *(required)*, `entry_id` *(optional)* | Switch the active OpenClaw session for new requests. |
 
 ```yaml
@@ -435,6 +437,21 @@ Then configure Host `127.0.0.1`, Port `18789`, token required. Over the tunnel t
 connection looks local to OpenClaw, so device pairing is typically auto-approved.
 
 ## Troubleshooting
+
+**Integration unavailable after a Gateway or proxy restart**
+- Restarting the Gateway (upgrade, rollout, container restart) or a reverse proxy
+  in front of it can make the WebSocket upgrade fail with HTTP 401/403 or 502/503
+  for a few seconds even though the token is fine. The integration retries those
+  with a backoff (5 s, doubling to a 60 s ceiling) and only reports an
+  authentication failure after several consecutive rejections.
+- If the entities still show unavailable, call **`openclaw.reconnect`**
+  (Developer tools → Actions). It restarts the connection loop even after it
+  stopped on an authentication error, so it is the first thing to try. The
+  service waits a few seconds for the connection and can report that a reconnect
+  is still in progress: the loop keeps retrying (5 s, doubling to 60 s) and turns
+  the entities available when the Gateway answers. Reloading the integration or
+  restarting Home Assistant does the same and is not normally needed.
+- Enable debug logging (below) to see each connection attempt and its backoff.
 
 **Cannot reach the gateway**
 - Confirm it's running: `openclaw status`. Verify host/port and firewall. Enable

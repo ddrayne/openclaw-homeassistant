@@ -83,3 +83,30 @@ CLIENT_MODE = "backend"
 DEVICE_ROLE = "operator"
 DEVICE_SCOPES = ["operator.read", "operator.write"]
 CHALLENGE_TIMEOUT = 2.0  # seconds to wait for connect.challenge before fallback
+
+# Connection recovery
+#
+# A transient failure must never end the connection loop permanently, and it
+# must not flood the log either: an early version retried a failing handshake
+# every 5 s forever, which grew Home Assistant's log file until it filled the
+# config volume. Transient failures therefore back off exponentially up to a
+# ceiling; a successful handshake resets the counter.
+RETRY_BASE_SECONDS = 5.0
+RETRY_MAX_SECONDS = 60.0
+# Clamp before exponentiation: 5 * 2 ** 1025 overflows a float before min()
+# can apply the ceiling, and an OverflowError in the loop's exception handler
+# would stop recovery without a fatal error.
+MAX_BACKOFF_EXPONENT = 16
+
+# Upper bound for waiting on a cancelled helper task during teardown. The tasks
+# this integration runs stop immediately on cancellation, so this only guards
+# against a task that ignores it: unload and reload must never hang on teardown.
+TASK_STOP_TIMEOUT_SECONDS = 5.0
+
+# An HTTP 401/403 on the WebSocket upgrade is not always a bad token: when a
+# reverse proxy in front of the Gateway validates the bearer token itself, a
+# Gateway or proxy restart can reject an otherwise valid identity for a few
+# seconds while its configuration reloads. Retry those a bounded number of
+# times, then report a real authentication failure that needs the user (or the
+# reconnect service, once the proxy is back).
+UPGRADE_AUTH_RETRY_ATTEMPTS = 4
