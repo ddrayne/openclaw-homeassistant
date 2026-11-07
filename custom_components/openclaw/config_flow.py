@@ -23,6 +23,7 @@ from .const import (
     CONF_PROACTIVE_MODE,
     CONF_PROACTIVE_SATELLITE,
     CONF_SESSION_KEY,
+    CONF_STREAMING_ENABLED,
     CONF_STRIP_EMOJIS,
     CONF_THINKING,
     CONF_TTS_MAX_CHARS,
@@ -37,6 +38,7 @@ from .const import (
     DEFAULT_PROACTIVE_ENABLED,
     DEFAULT_PROACTIVE_MODE,
     DEFAULT_SESSION_KEY,
+    DEFAULT_STREAMING_ENABLED,
     DEFAULT_STRIP_EMOJIS,
     DEFAULT_THINKING,
     DEFAULT_TTS_MAX_CHARS,
@@ -512,6 +514,9 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_TTS_MAX_CHARS: user_input.get(
                         CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS
                     ),
+                    CONF_STREAMING_ENABLED: user_input.get(
+                        CONF_STREAMING_ENABLED, DEFAULT_STREAMING_ENABLED
+                    ),
                 }
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
@@ -566,6 +571,12 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS
                     ),
                 ): vol.All(int, vol.Range(min=0, max=2000)),
+                vol.Optional(
+                    CONF_STREAMING_ENABLED,
+                    default=current.get(
+                        CONF_STREAMING_ENABLED, DEFAULT_STREAMING_ENABLED
+                    ),
+                ): bool,
                 **_background_schema_fields(current),
                 **_proactive_schema_fields(current),
             }

@@ -74,6 +74,8 @@ class _FakeEntry:
 
 def _make_env(mod, options: dict, timeout: float = 5.0):
     """Real client with a stubbed gateway transport; events drive the run."""
+    # Streaming is opt-in; enable it so the ChatLog-capable module streams.
+    options = {"streaming_enabled": True, **options}
     client = mod.OpenClawGatewayClient("localhost", 1, None, timeout=timeout)
     client._resolved_agent_id = "main"
 
