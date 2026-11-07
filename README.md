@@ -3,7 +3,7 @@
 [![Tests](https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml/badge.svg)](https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml)
 
 <p align="center">
-  <img src="custom_components/openclaw/icon.png" alt="OpenClaw Icon" width="128" height="128">
+  <img src="custom_components/openclaw/brand/icon.png" alt="OpenClaw Icon" width="128" height="128">
 </p>
 
 Talk to your [OpenClaw](https://openclaw.ai/) AI agent through Home Assistant's
