@@ -12,6 +12,7 @@ from .exceptions import (
     GatewayAuthenticationError,
     GatewayConnectionError,
     GatewayTimeoutError,
+    GatewayUpgradeRejectedError,
     ProtocolError,
 )
 from .gateway import GatewayProtocol
@@ -67,14 +68,25 @@ class AgentRun:
                     len(self._full_text),
                 )
         else:
-            # Not cumulative (shouldn't happen), just replace
-            _LOGGER.warning(
-                "Non-cumulative text update for %s (was: %d, now: %d)",
+            # Text that does not extend the buffer starts a new assistant item
+            # (e.g. the answer after a tool call) or corrects the text: replace
+            # it. This is routine for multi-item runs, so it is not a warning.
+            _LOGGER.debug(
+                "New assistant text for %s replaces the buffer (was: %d, now: %d)",
                 self.run_id,
                 len(self._full_text),
                 len(output),
             )
             new_text = output
+            if (
+                self._streamed_any
+                and not self._full_text[-1:].isspace()
+                and not output[:1].isspace()
+            ):
+                # Streamed text cannot be taken back, so the new item follows
+                # what was already sent. Separate the two so speech and the
+                # chat log do not run them together ("check.It's 72").
+                new_text = "\n\n" + output
             self._full_text = output
 
         if new_text and self._stream_queue is not None:
@@ -190,6 +202,11 @@ class OpenClawGatewayClient:
         self._model = model
         self._thinking = thinking
         self._agent_runs: dict[str, AgentRun] = {}
+        # Gateway events may arrive before the RPC acknowledgement returns
+        # their runId. Buffer them while agent starts are pending and replay
+        # after the run is registered.
+        self._pending_agent_starts = 0
+        self._early_agent_events: dict[str, list[dict[str, Any]]] = {}
 
         # Proactive voice: callback invoked with agent-initiated assistant text,
         # and a timestamp of the most recent local agent activity used to
@@ -230,6 +247,14 @@ class OpenClawGatewayClient:
                 raise GatewayConnectionError(str(fatal)) from fatal
             if fatal:
                 raise GatewayConnectionError(str(fatal)) from fatal
+            status = self._gateway.upgrade_auth_status
+            if status is not None:
+                raise GatewayUpgradeRejectedError(
+                    f"Gateway rejected the connection with HTTP {status}; "
+                    "retrying in case the Gateway or a proxy in front of it "
+                    "is restarting",
+                    status,
+                )
             raise GatewayConnectionError(
                 f"Connection timeout - Gateway at {self._gateway._host}:"
                 f"{self._gateway._port} may not be reachable"
@@ -323,29 +348,40 @@ class OpenClawGatewayClient:
         if self._thinking:
             options["thinking"] = self._thinking
 
-        response = await self._gateway.send_request(
-            method="agent",
-            params={
-                "message": message,
-                "sessionKey": self._effective_session_key,
-                "idempotencyKey": idempotency_key,
-                **options,
-            },
-            timeout=10.0,
-        )
+        self._pending_agent_starts += 1
+        try:
+            response = await self._gateway.send_request(
+                method="agent",
+                params={
+                    "message": message,
+                    "sessionKey": self._effective_session_key,
+                    "idempotencyKey": idempotency_key,
+                    **options,
+                },
+                timeout=10.0,
+            )
 
-        payload = response.get("payload", {})
-        run_id = payload.get("runId")
+            payload = response.get("payload", {})
+            run_id = payload.get("runId")
 
-        if not run_id:
-            raise AgentExecutionError("No runId in agent response")
+            if not run_id:
+                raise AgentExecutionError("No runId in agent response")
 
-        _LOGGER.debug("Agent run started: %s", run_id)
+            _LOGGER.debug("Agent run started: %s", run_id)
 
-        agent_run = AgentRun(run_id, stream=stream)
-        self._agent_runs[run_id] = agent_run
-        self._buffer_agent_payload(agent_run, payload)
-        return agent_run
+            agent_run = AgentRun(run_id, stream=stream)
+            self._agent_runs[run_id] = agent_run
+            self._buffer_agent_payload(agent_run, payload)
+            # Preserve arrival order, including any terminal lifecycle event.
+            # No await occurs between registration and replay.
+            for event in self._early_agent_events.pop(run_id, []):
+                self._handle_agent_event(event)
+            return agent_run
+        finally:
+            self._pending_agent_starts -= 1
+            if self._pending_agent_starts == 0:
+                # Unknown runs must not remain cached after pending starts.
+                self._early_agent_events.clear()
 
     async def send_agent_request(
         self, message: str, idempotency_key: str | None = None
@@ -594,8 +630,21 @@ class OpenClawGatewayClient:
 
         agent_run = self._agent_runs.get(run_id)
         if not agent_run:
-            # Event for unknown run, might be from previous session
-            _LOGGER.debug("Agent event for unknown run: %s", run_id)
+            # A fast agent may have already produced its answer before the
+            # initial request ack reaches the client. Bound retained events
+            # because other sessions may also emit messages concurrently.
+            if self._pending_agent_starts:
+                if run_id not in self._early_agent_events:
+                    if len(self._early_agent_events) >= 16:
+                        self._early_agent_events.pop(next(iter(self._early_agent_events)))
+                    self._early_agent_events[run_id] = []
+                pending = self._early_agent_events[run_id]
+                if len(pending) >= 128:
+                    pending.pop(0)
+                pending.append(event)
+                _LOGGER.debug("Buffered early agent event for run %s", run_id)
+            else:
+                _LOGGER.debug("Agent event for unknown run: %s", run_id)
             return
 
         # Keep the proactive suppression window fresh while one of our own runs

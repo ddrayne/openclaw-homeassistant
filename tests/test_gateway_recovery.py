@@ -305,6 +305,107 @@ class TestUpgradeAuthRetry:
         assert len(calls) == 3
 
 
+class TestUpgradeAuthStatus:
+    @pytest.mark.asyncio
+    async def test_status_tracks_rejections_until_handshake(self, monkeypatch) -> None:
+        """Callers can tell a refused token from an unreachable Gateway."""
+        protocol = GatewayProtocol("localhost", 1, "token")
+        seen: list[int | None] = []
+
+        async def fake_sleep(_delay: float) -> None:
+            seen.append(protocol.upgrade_auth_status)
+
+        monkeypatch.setattr(gateway_module.asyncio, "sleep", fake_sleep)
+        monkeypatch.setattr(gateway_module, "InvalidStatus", FakeInvalidStatus)
+        monkeypatch.setattr(
+            gateway_module, "connect", scripted_connect([401, 403], [])
+        )
+        protocol._handshake = AsyncMock()
+        protocol._receive_loop = AsyncMock(side_effect=asyncio.CancelledError)
+        protocol._heartbeat_loop = AsyncMock(side_effect=asyncio.CancelledError)
+
+        await protocol.connect()
+        await asyncio.wait_for(protocol._connect_task, 5)
+
+        assert seen == [401, 403]
+        assert protocol.upgrade_auth_status is None
+
+    @pytest.mark.asyncio
+    async def test_connect_clears_stale_status(self) -> None:
+        protocol = GatewayProtocol("localhost", 1, "token")
+        protocol._upgrade_auth_status = 403
+        protocol._connection_loop = AsyncMock()
+
+        await protocol.connect()
+
+        assert protocol.upgrade_auth_status is None
+        await asyncio.gather(protocol._connect_task, return_exceptions=True)
+
+
+class TestTlsContext:
+    @pytest.mark.asyncio
+    async def test_wss_context_is_built_once_off_the_event_loop(
+        self, monkeypatch
+    ) -> None:
+        """Building the default context loads CA files: never on the loop."""
+        import ssl
+        import threading
+
+        passed: list = []
+
+        def factory(_uri: str, **kwargs):
+            passed.append(kwargs.get("ssl"))
+            # First attempt is rejected so the loop reconnects once.
+            return FakeUpgrade(503 if len(passed) == 1 else None)
+
+        built_on: list[int] = []
+        real_create = ssl.create_default_context
+
+        def counting_create(*args, **kwargs):
+            built_on.append(threading.get_ident())
+            return real_create(*args, **kwargs)
+
+        monkeypatch.setattr(gateway_module.asyncio, "sleep", _noop_sleep)
+        monkeypatch.setattr(gateway_module, "InvalidStatus", FakeInvalidStatus)
+        monkeypatch.setattr(gateway_module, "connect", factory)
+        monkeypatch.setattr(gateway_module.ssl, "create_default_context", counting_create)
+
+        protocol = GatewayProtocol("localhost", 1, "token", use_ssl=True)
+        protocol._handshake = AsyncMock()
+        protocol._receive_loop = AsyncMock(side_effect=asyncio.CancelledError)
+        protocol._heartbeat_loop = AsyncMock(side_effect=asyncio.CancelledError)
+
+        await protocol.connect()
+        await asyncio.wait_for(protocol._connect_task, 5)
+
+        assert len(passed) == 2
+        assert isinstance(passed[0], ssl.SSLContext)
+        assert passed[0] is passed[1]  # reused across reconnects
+        assert len(built_on) == 1
+        assert built_on[0] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_plain_ws_passes_no_ssl_argument(self, monkeypatch) -> None:
+        """websockets rejects any ssl argument for a ws:// URI."""
+        seen: list[dict] = []
+
+        def factory(_uri: str, **kwargs):
+            seen.append(kwargs)
+            return FakeUpgrade()
+
+        monkeypatch.setattr(gateway_module, "InvalidStatus", FakeInvalidStatus)
+        monkeypatch.setattr(gateway_module, "connect", factory)
+        protocol = GatewayProtocol("localhost", 1, "token", use_ssl=False)
+        protocol._handshake = AsyncMock()
+        protocol._receive_loop = AsyncMock(side_effect=asyncio.CancelledError)
+        protocol._heartbeat_loop = AsyncMock(side_effect=asyncio.CancelledError)
+
+        await protocol.connect()
+        await asyncio.wait_for(protocol._connect_task, 5)
+
+        assert "ssl" not in seen[0]
+
+
 class TestRetryBackoff:
     def test_delay_grows_then_caps(self) -> None:
         protocol = GatewayProtocol("localhost", 1, None)

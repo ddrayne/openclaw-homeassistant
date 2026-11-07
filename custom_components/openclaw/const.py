@@ -12,6 +12,9 @@ DEFAULT_MODEL = None
 DEFAULT_THINKING = None
 DEFAULT_STRIP_EMOJIS = True  # Strip emojis from TTS by default
 DEFAULT_TTS_MAX_CHARS = 0  # 0 disables TTS trimming
+# Stream replies into the HA ChatLog so TTS can start before the agent is
+# done. Opt-in while it is new: off keeps the complete-reply path.
+DEFAULT_STREAMING_ENABLED = False
 DEFAULT_AGENT_ID = None  # Use gateway default agent
 
 # Proactive voice: speak agent-initiated turns (cron/background/follow-ups) on a
@@ -31,6 +34,9 @@ DEFAULT_BACKGROUND_ENABLED = True
 DEFAULT_BACKGROUND_GRACE = 10  # seconds to wait for first content
 DEFAULT_HOLDING_PHRASE = "On it — I'll let you know when it's done."
 BACKGROUND_ERROR_PHRASE = "Sorry — that request ran into a problem."
+# Spoken when a run completes without any reply text, instead of leaving
+# Assist with an empty response.
+EMPTY_REPLY_PHRASE = "I didn't get a reply from OpenClaw. Please try again."
 BACKGROUND_TIMEOUT_PHRASE = (
     "That's taking longer than expected, so I've stopped waiting for it."
 )
@@ -51,6 +57,7 @@ CONF_MODEL = "model"
 CONF_THINKING = "thinking"
 CONF_STRIP_EMOJIS = "strip_emojis"
 CONF_TTS_MAX_CHARS = "tts_max_chars"
+CONF_STREAMING_ENABLED = "streaming_enabled"
 CONF_PROACTIVE_ENABLED = "proactive_enabled"
 CONF_PROACTIVE_SATELLITE = "proactive_satellite"
 CONF_PROACTIVE_MODE = "proactive_mode"
@@ -110,3 +117,21 @@ TASK_STOP_TIMEOUT_SECONDS = 5.0
 # times, then report a real authentication failure that needs the user (or the
 # reconnect service, once the proxy is back).
 UPGRADE_AUTH_RETRY_ATTEMPTS = 4
+
+
+def entry_unique_id(
+    host: str, port: int, agent_id: str | None, session_key: str | None
+) -> str:
+    """Return a config entry's unique ID: one entry per gateway, agent and session.
+
+    The default agent on the default session keeps the original ``host:port``
+    form, so existing entries keep their ID and a second default entry for the
+    same gateway is still rejected. A specific agent or session gets its own
+    ID, so several agents on one gateway can each be a separate assistant.
+    """
+    base = f"{host}:{port}"
+    agent = (agent_id or "").strip()
+    session = (session_key or DEFAULT_SESSION_KEY).strip() or DEFAULT_SESSION_KEY
+    if not agent and session == DEFAULT_SESSION_KEY:
+        return base
+    return f"{base}|agent={agent or 'default'}|session={session}"

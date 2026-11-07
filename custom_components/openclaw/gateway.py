@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import json
 import logging
+import ssl
 import time
 import uuid
 from typing import Any, Callable
@@ -81,6 +82,13 @@ class GatewayProtocol:
 
         # Fatal error that stopped the connection loop (auth / protocol)
         self._fatal_error: Exception | None = None
+        # HTTP status of the latest 401/403 upgrade rejection, cleared by a
+        # successful handshake. Lets callers that time out waiting for the
+        # first connection say *why* instead of "may not be reachable".
+        self._upgrade_auth_status: int | None = None
+        # TLS context for wss://, built once off the event loop (see
+        # _async_ssl_context) and reused for every reconnect.
+        self._ssl_context: ssl.SSLContext | None = None
         self._on_fatal_error: Callable[[Exception], None] | None = None
         # Fired after every successful handshake so callers can re-issue
         # per-connection state (e.g. session subscriptions) on reconnect.
@@ -103,6 +111,11 @@ class GatewayProtocol:
         return self._connect_snapshot
 
     @property
+    def upgrade_auth_status(self) -> int | None:
+        """Return the HTTP status of an unresolved 401/403 upgrade rejection."""
+        return self._upgrade_auth_status
+
+    @property
     def presence(self) -> dict[str, Any]:
         """Return the latest presence data."""
         return self._presence
@@ -113,6 +126,7 @@ class GatewayProtocol:
             return
 
         self._fatal_error = None
+        self._upgrade_auth_status = None
         self._connect_task = asyncio.create_task(self._connection_loop())
         self._connect_task.add_done_callback(self._handle_connect_task_done)
 
@@ -223,6 +237,18 @@ class GatewayProtocol:
                 )
         self._pending_requests.clear()
 
+    async def _async_ssl_context(self) -> ssl.SSLContext:
+        """Return the TLS context for wss://, building it off the event loop.
+
+        Without an explicit context, websockets passes ``ssl=True`` and
+        asyncio calls ``ssl.create_default_context()`` inside the event loop
+        on every connect. That reads the system CA bundle from disk, which
+        Home Assistant reports as a blocking call.
+        """
+        if self._ssl_context is None:
+            self._ssl_context = await asyncio.to_thread(ssl.create_default_context)
+        return self._ssl_context
+
     async def _connection_loop(self) -> None:
         """Maintain connection with automatic reconnection."""
         failures = 0
@@ -237,11 +263,15 @@ class GatewayProtocol:
                 if self._token:
                     headers["Authorization"] = f"Bearer {self._token}"
                     headers["X-OpenClaw-Token"] = self._token
+                tls: dict[str, Any] = {}
+                if self._use_ssl:
+                    tls["ssl"] = await self._async_ssl_context()
                 async with connect(
                     self._uri,
                     ping_interval=30,
                     ping_timeout=10,
                     additional_headers=headers,
+                    **tls,
                 ) as websocket:
                     self._websocket = websocket
                     try:
@@ -251,6 +281,7 @@ class GatewayProtocol:
                         failures = 0
                         upgrade_auth_rejections = 0
                         self._fatal_error = None
+                        self._upgrade_auth_status = None
                         _LOGGER.info("Connected to Gateway successfully")
                         self._last_pong = time.monotonic()
                         connected_at = time.monotonic()
@@ -341,6 +372,7 @@ class GatewayProtocol:
                 status = getattr(getattr(err, "response", None), "status_code", None)
                 if status in (401, 403):
                     upgrade_auth_rejections += 1
+                    self._upgrade_auth_status = status
                     if upgrade_auth_rejections > UPGRADE_AUTH_RETRY_ATTEMPTS:
                         auth_err = GatewayAuthenticationError(
                             f"Gateway rejected connection: HTTP {status}"

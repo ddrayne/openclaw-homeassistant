@@ -30,12 +30,15 @@ from .const import (
     DEFAULT_TTS_MAX_CHARS,
     DEFAULT_USE_SSL,
     DOMAIN,
+    UPGRADE_AUTH_RETRY_ATTEMPTS,
+    entry_unique_id,
 )
 from .exceptions import (
     DevicePairingRequiredError,
     GatewayAuthenticationError,
     GatewayConnectionError,
     GatewayTimeoutError,
+    GatewayUpgradeRejectedError,
 )
 from .gateway_client import OpenClawGatewayClient
 
@@ -46,6 +49,9 @@ SERVICE_RECONNECT = "reconnect"
 SERVICE_SET_SESSION = "set_session"
 _SERVICE_REGISTERED = "_service_registered"
 _PLATFORMS_LOADED = "_platforms_loaded"
+# Consecutive setup attempts whose connection was refused with HTTP 401/403,
+# per entry. Kept outside hass.data[DOMAIN], which only holds clients and flags.
+_SETUP_UPGRADE_REJECTIONS = f"{DOMAIN}_setup_upgrade_rejections"
 _RECONNECT_SCHEMA = vol.Schema({vol.Optional("entry_id"): str})
 _SESSION_SCHEMA = vol.Schema(
     {
@@ -80,6 +86,36 @@ async def _async_disconnect_quietly(
         )
 
 
+def _async_migrate_unique_id(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Scope the entry's unique ID to its agent and session (#13).
+
+    Entries used to be unique per ``host:port``. An entry already set to a
+    specific agent would then block adding the same gateway again for another
+    agent, so move it to the agent-scoped ID unless another entry holds it.
+    """
+    config = {**entry.data, **entry.options}
+    unique_id = entry_unique_id(
+        entry.data[CONF_HOST],
+        entry.data[CONF_PORT],
+        config.get(CONF_AGENT_ID),
+        config.get(CONF_SESSION_KEY),
+    )
+    if entry.unique_id == unique_id:
+        return
+    if any(
+        other.unique_id == unique_id
+        for other in hass.config_entries.async_entries(DOMAIN)
+        if other.entry_id != entry.entry_id
+    ):
+        _LOGGER.debug(
+            "Not migrating unique ID of %s: %s is already in use",
+            entry.entry_id,
+            unique_id,
+        )
+        return
+    hass.config_entries.async_update_entry(entry, unique_id=unique_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OpenClaw from a config entry."""
     _LOGGER.info("Setting up OpenClaw integration")
@@ -95,6 +131,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.config_entries.async_update_entry(entry, options=migrated)
 
     options = entry.options
+    _async_migrate_unique_id(hass, entry)
 
     # Create Gateway client with config from entry.data
     gateway_client = OpenClawGatewayClient(
@@ -124,6 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Connect to Gateway
     try:
         await gateway_client.connect()
+        hass.data.get(_SETUP_UPGRADE_REJECTIONS, {}).pop(entry.entry_id, None)
         _LOGGER.info(
             "Connected to OpenClaw Gateway at %s:%s",
             entry.data[CONF_HOST],
@@ -137,6 +175,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _async_disconnect_quietly(gateway_client, entry)
         if isinstance(err, GatewayAuthenticationError):
             raise ConfigEntryAuthFailed(err) from err
+        if isinstance(err, GatewayUpgradeRejectedError):
+            # A 401/403 on the upgrade is retried because a restarting proxy
+            # can reject a valid token. Setup only waits a few seconds and
+            # each retry builds a fresh client, so the connection loop's own
+            # retry budget would restart every attempt and a wrong token would
+            # never surface. Count rejections across attempts instead.
+            rejections = hass.data.setdefault(_SETUP_UPGRADE_REJECTIONS, {})
+            count = rejections.get(entry.entry_id, 0) + 1
+            if count > UPGRADE_AUTH_RETRY_ATTEMPTS:
+                rejections.pop(entry.entry_id, None)
+                raise ConfigEntryAuthFailed(err) from err
+            rejections[entry.entry_id] = count
+            raise ConfigEntryNotReady(err) from err
         if isinstance(err, (GatewayConnectionError, GatewayTimeoutError)):
             raise ConfigEntryNotReady(err) from err
         raise ConfigEntryNotReady(err) from err
@@ -193,6 +244,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 try:
                     await client.disconnect()
                     await client.connect()
+                except GatewayAuthenticationError as err:
+                    _LOGGER.error(
+                        "Reconnect for entry %s failed: the Gateway rejected "
+                        "authentication (%s). Update the token under Settings "
+                        "> Devices & Services > OpenClaw > Configure.",
+                        key,
+                        err,
+                    )
                 except Exception as err:  # pylint: disable=broad-except
                     # ``connect()`` gives up waiting after a few seconds while
                     # its connection loop keeps retrying, so a still-recovering

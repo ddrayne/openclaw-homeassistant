@@ -114,6 +114,39 @@ class TestHandleAgentEvent:
             queued.append(run._stream_queue.get_nowait())
         assert queued == ["It's sunny and", " seventy-two", " degrees."]
 
+    def test_replays_captured_gateway_delta_sequence(self) -> None:
+        # Event sequence captured from a live gateway 2026.10.4 where Voice PE
+        # spoke only "He": the snapshot arrives once, then deltas only (#16).
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        for data in (
+            {"text": "He", "delta": "He", "itemId": "i"},
+            {"delta": "ute leichter Regen,", "itemId": "i"},
+            {"delta": " vierzehn Grad.", "itemId": "i"},
+        ):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+
+        assert run.get_response() == "Heute leichter Regen, vierzehn Grad."
+
+    @pytest.mark.asyncio
+    async def test_iter_stream_yields_delta_only_chunks(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        for data in ({"text": "He", "delta": "He"}, {"delta": "llo"}):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+        run.set_complete("ok", None)
+
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["He", "llo"]
+
     def test_delta_for_new_item_starts_its_text(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         run = AgentRun("run-1")
@@ -129,6 +162,60 @@ class TestHandleAgentEvent:
             )
 
         assert run.get_response() == "All done."
+
+    @pytest.mark.asyncio
+    async def test_streamed_items_are_separated(self, caplog) -> None:
+        """A second item (the answer after a tool call) must not be glued on."""
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        with caplog.at_level("WARNING"):
+            for data in (
+                {"itemId": "a1", "text": "Let me check.", "delta": "Let me check."},
+                {"itemId": "a2", "text": "It's", "delta": "It's"},
+                {"itemId": "a2", "delta": " 72 degrees."},
+            ):
+                client._handle_agent_event(
+                    {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+                )
+        run.set_complete("ok", None)
+
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["Let me check.", "\n\nIt's", " 72 degrees."]
+        # The buffered (non-streaming) reply is still the final item only.
+        assert run.get_response() == "It's 72 degrees."
+        # Routine item boundaries are not warnings.
+        assert caplog.records == []
+
+    @pytest.mark.asyncio
+    async def test_delta_only_new_item_is_separated_when_streamed(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        for data in (
+            {"itemId": "a1", "text": "Checking.", "delta": "Checking."},
+            {"itemId": "a2", "delta": "All"},
+            {"itemId": "a2", "delta": " done."},
+        ):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+        run.set_complete("ok", None)
+
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["Checking.", "\n\nAll", " done."]
+
+    def test_existing_whitespace_is_not_doubled(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.add_output("Checking. ")
+        run.add_output("All done.")
+
+        queued = []
+        while not run._stream_queue.empty():
+            queued.append(run._stream_queue.get_nowait())
+        assert queued == ["Checking. ", "All done."]
 
     def test_ignores_delta_from_non_assistant_stream(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
@@ -697,6 +784,23 @@ class TestConnect:
         with pytest.raises(GatewayConnectionError, match="Connection timeout"):
             await client.connect()
 
+    @pytest.mark.asyncio
+    async def test_connect_names_upgrade_auth_rejection(self) -> None:
+        """A 401/403 on the upgrade is reported instead of "may not be reachable"."""
+        client = OpenClawGatewayClient("localhost", 1, "tok")
+        client._gateway._upgrade_auth_status = 403
+        client._gateway.connect = AsyncMock()  # type: ignore[attr-defined]
+
+        with pytest.raises(
+            _exceptions.GatewayUpgradeRejectedError, match="HTTP 403"
+        ) as info:
+            await client.connect()
+
+        assert info.value.status_code == 403
+        # Still a connection error, so existing handlers keep treating it as
+        # retryable.
+        assert isinstance(info.value, GatewayConnectionError)
+
     def test_fatal_error_property(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         assert client.fatal_error is None
@@ -769,3 +873,124 @@ class TestPresence:
         client._handle_presence_event({"payload": {}})
 
         assert client.presence == {"clients": ["existing"]}
+
+
+class TestEarlyAgentEvents:
+    """The Gateway may publish text and terminal events before its agent RPC ack."""
+
+    @pytest.mark.asyncio
+    async def test_events_in_same_read_as_ack_are_not_lost(self) -> None:
+        """The ack and the run's first events can arrive in one websocket read.
+
+        The receive loop then handles them back to back. Resolving the ack's
+        future only *schedules* the waiting request, so without buffering the
+        events are dispatched before the run is registered and dropped, and
+        the request waits for a completion that already happened.
+        """
+        client = OpenClawGatewayClient(
+            "localhost", 1, None, agent_id="main", timeout=1.0
+        )
+        gateway = client._gateway
+        sent = asyncio.Event()
+
+        async def send_request(**_kwargs):
+            future = asyncio.get_running_loop().create_future()
+            gateway._pending_requests["req-1"] = future
+            sent.set()
+            return await future
+
+        gateway.send_request = send_request
+        request = asyncio.create_task(client.send_agent_request("hi"))
+        await sent.wait()
+
+        for message in (
+            {
+                "type": "res",
+                "id": "req-1",
+                "ok": True,
+                "payload": {"runId": "r1", "status": "accepted"},
+            },
+            {
+                "type": "event",
+                "event": "agent",
+                "payload": {
+                    "runId": "r1",
+                    "stream": "assistant",
+                    "data": {"text": "Hello there", "delta": "Hello there"},
+                },
+            },
+            {
+                "type": "event",
+                "event": "agent",
+                "payload": {
+                    "runId": "r1",
+                    "stream": "lifecycle",
+                    "data": {"phase": "end"},
+                },
+            },
+        ):
+            await gateway._handle_message(message)
+
+        assert await asyncio.wait_for(request, 2) == "Hello there"
+        assert client._early_agent_events == {}
+
+    @pytest.mark.asyncio
+    async def test_fast_run_finishes_before_ack(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None, agent_id="main")
+
+        async def send_before_ack(*_args, **_kwargs):
+            client._handle_agent_event(
+                {"payload": {"runId": "fast-run", "output": "Finished"}}
+            )
+            client._handle_agent_event(
+                {
+                    "payload": {
+                        "runId": "fast-run",
+                        "stream": "lifecycle",
+                        "data": {"phase": "end"},
+                    }
+                }
+            )
+            return {"payload": {"runId": "fast-run"}}
+
+        client._gateway.send_request = AsyncMock(side_effect=send_before_ack)
+        result = await asyncio.wait_for(client.send_agent_request("hello"), 1.0)
+        assert result == "Finished"
+        assert client._agent_runs == {}
+        assert client._early_agent_events == {}
+        assert client._pending_agent_starts == 0
+
+    @pytest.mark.asyncio
+    async def test_fast_stream_replays_chunks_and_terminal_event(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None, agent_id="main")
+
+        async def send_before_ack(*_args, **_kwargs):
+            for output in ("Hello", "Hello world"):
+                client._handle_agent_event(
+                    {"payload": {"runId": "fast-stream", "output": output}}
+                )
+            client._handle_agent_event(
+                {
+                    "payload": {
+                        "runId": "fast-stream",
+                        "stream": "lifecycle",
+                        "data": {"phase": "end"},
+                    }
+                }
+            )
+            return {"payload": {"runId": "fast-stream"}}
+
+        client._gateway.send_request = AsyncMock(side_effect=send_before_ack)
+        chunks = [
+            chunk async for chunk in client.stream_agent_request("hello")
+        ]
+        assert chunks == ["Hello", " world"]
+        assert client._agent_runs == {}
+        assert client._early_agent_events == {}
+
+    def test_orphans_are_not_cached_without_pending_start(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        client._handle_agent_event(
+            {"payload": {"runId": "unrelated", "status": "ok"}}
+        )
+        assert client._early_agent_events == {}

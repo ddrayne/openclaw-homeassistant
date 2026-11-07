@@ -12,6 +12,8 @@ from __future__ import annotations
 from typing import AsyncIterator
 from unittest.mock import MagicMock
 
+import pytest
+
 from tests._conversation_loader import load_conversation_module
 
 
@@ -24,6 +26,9 @@ def _make_entry() -> MagicMock:
         "strip_emojis": False,
         "tts_max_chars": 0,
         "background_enabled": False,
+        # Streaming is opt-in; these tests exercise the streaming path where
+        # the stub provides HA's ChatLog delta API.
+        "streaming_enabled": True,
     }
     entry.options = {}
     return entry
@@ -106,6 +111,48 @@ async def test_supports_streaming_detects_chatlog_api() -> None:
     assert conv.OpenClawConversationEntity._supports_streaming_result() is True
     conv = load_conversation_module(streaming="none")
     assert conv.OpenClawConversationEntity._supports_streaming_result() is False
+
+
+async def test_streaming_is_off_by_default() -> None:
+    """Without the opt-in, a streaming-capable HA still gets the full reply."""
+    conv = load_conversation_module(streaming="chatlog")
+    gateway = _make_gateway()
+
+    async def fake_send(_message: str, **_kw) -> str:
+        return "The complete answer."
+
+    gateway.send_agent_request = fake_send
+
+    entry = _make_entry()
+    entry.data.pop("streaming_enabled")
+    entity = conv.OpenClawConversationEntity(entry, gateway)
+    chat_log = conv.conversation.ChatLog()
+    result = await entity._async_handle_message(_make_user_input(), chat_log)
+
+    assert entity._attr_supports_streaming is False
+    assert chat_log.deltas == []
+    assert result.response.speech == "The complete answer."
+
+
+@pytest.mark.parametrize(
+    ("streaming_enabled", "tts_max_chars", "loader_mode", "expected"),
+    [
+        (True, 0, "chatlog", True),
+        (False, 0, "chatlog", False),
+        (True, 100, "chatlog", False),  # trimming needs the full text
+        (True, 0, "none", False),  # HA without the ChatLog delta API
+    ],
+)
+async def test_supports_streaming_flag_follows_option(
+    streaming_enabled: bool, tts_max_chars: int, loader_mode: str, expected: bool
+) -> None:
+    conv = load_conversation_module(streaming=loader_mode)
+    entry = _make_entry()
+    entry.data["streaming_enabled"] = streaming_enabled
+    entry.data["tts_max_chars"] = tts_max_chars
+    entity = conv.OpenClawConversationEntity(entry, _make_gateway())
+
+    assert entity._attr_supports_streaming is expected
 
 
 async def test_streaming_sets_continue_on_question() -> None:
@@ -236,6 +283,63 @@ async def test_streaming_skipped_when_tts_trimming_enabled() -> None:
     # Trimming needs the full text, so the plain (buffered) path is used.
     assert chat_log.deltas == []
     assert result.response.speech == "A rat..."
+
+
+# ---------- empty replies ----------
+
+
+async def test_empty_reply_speaks_fallback(caplog) -> None:
+    """A run that completes with no text must not leave Assist empty ("...")."""
+    conv = load_conversation_module(streaming="none")
+    gateway = _make_gateway()
+
+    async def fake_send(_message: str, **_kw) -> str:
+        return ""
+
+    gateway.send_agent_request = fake_send
+    entity = conv.OpenClawConversationEntity(_make_entry(), gateway)
+    result = await entity._async_handle_message(_make_user_input(), FakeChatLog())
+
+    assert result.response.speech == conv.EMPTY_REPLY_PHRASE
+    assert "without any reply text" in caplog.text
+
+
+async def test_streaming_empty_reply_speaks_fallback() -> None:
+    conv = load_conversation_module(streaming="chatlog")
+    gateway = _make_gateway()
+
+    async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+    gateway.stream_agent_request = fake_stream
+    entity = conv.OpenClawConversationEntity(_make_entry(), gateway)
+    chat_log = conv.conversation.ChatLog()
+    result = await entity._async_handle_message(_make_user_input(), chat_log)
+
+    assert chat_log.deltas == [
+        {"role": "assistant"},
+        {"content": conv.EMPTY_REPLY_PHRASE},
+    ]
+    assert result.response.speech == conv.EMPTY_REPLY_PHRASE
+
+
+async def test_streaming_emoji_only_reply_is_not_treated_as_empty() -> None:
+    """The agent did reply; stripping its only emoji is not a missing reply."""
+    conv = load_conversation_module(streaming="chatlog")
+    gateway = _make_gateway()
+
+    async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
+        yield "\U0001F44D"
+
+    gateway.stream_agent_request = fake_stream
+    entry = _make_entry()
+    entry.data["strip_emojis"] = True
+    entity = conv.OpenClawConversationEntity(entry, gateway)
+    chat_log = conv.conversation.ChatLog()
+    await entity._async_handle_message(_make_user_input(), chat_log)
+
+    assert {"content": conv.EMPTY_REPLY_PHRASE} not in chat_log.deltas
 
 
 # ---------- error path ----------

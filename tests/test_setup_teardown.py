@@ -1,6 +1,7 @@
 """Tests for setup-retry and reconnect-service failure handling (HA-free)."""
 
 import importlib.util
+import logging
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -207,3 +208,121 @@ async def test_reconnect_service_ignores_unknown_entry() -> None:
 
     client.connect.assert_not_awaited()
     client.disconnect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repeated_upgrade_rejections_at_setup_start_reauth() -> None:
+    """A token a proxy keeps refusing must still open reauth.
+
+    Setup only waits a few seconds and every retry builds a fresh client, so
+    the connection loop's own retry budget restarts on each attempt; setup
+    counts the rejections across attempts instead.
+    """
+    integration, exceptions, exceptions_mod, client_class = _load_integration()
+    attempts = sys.modules["custom_components.openclaw.const"].UPGRADE_AUTH_RETRY_ATTEMPTS
+    client_class.connect_error = exceptions.GatewayUpgradeRejectedError(
+        "Gateway rejected the connection with HTTP 403", 403
+    )
+    hass = _make_hass()
+    entry = _make_entry()
+
+    for _ in range(attempts):
+        with pytest.raises(exceptions_mod.ConfigEntryNotReady):
+            await integration.async_setup_entry(hass, entry)
+    with pytest.raises(exceptions_mod.ConfigEntryAuthFailed):
+        await integration.async_setup_entry(hass, entry)
+    # The budget starts over once reauth has been requested.
+    with pytest.raises(exceptions_mod.ConfigEntryNotReady):
+        await integration.async_setup_entry(hass, entry)
+
+
+@pytest.mark.asyncio
+async def test_successful_setup_resets_upgrade_rejection_count() -> None:
+    integration, exceptions, exceptions_mod, client_class = _load_integration()
+    attempts = sys.modules["custom_components.openclaw.const"].UPGRADE_AUTH_RETRY_ATTEMPTS
+    rejected = exceptions.GatewayUpgradeRejectedError("HTTP 403", 403)
+    hass = _make_hass()
+    entry = _make_entry()
+
+    client_class.connect_error = rejected
+    for _ in range(attempts):
+        with pytest.raises(exceptions_mod.ConfigEntryNotReady):
+            await integration.async_setup_entry(hass, entry)
+
+    client_class.connect_error = None
+    assert await integration.async_setup_entry(hass, entry)
+
+    client_class.connect_error = rejected
+    with pytest.raises(exceptions_mod.ConfigEntryNotReady):
+        await integration.async_setup_entry(hass, entry)
+
+
+@pytest.mark.asyncio
+async def test_reconnect_service_reports_auth_failure(caplog) -> None:
+    """An auth failure is reported as such, not as "still in progress"."""
+    integration, exceptions, _exceptions_mod, client_class = _load_integration()
+    hass = _make_hass()
+    await integration.async_setup_entry(hass, _make_entry("entry-1"))
+    first = hass.data[integration.DOMAIN]["entry-1"]
+    second = client_class()
+    hass.data[integration.DOMAIN]["entry-2"] = second
+    first.connect.side_effect = exceptions.GatewayAuthenticationError("invalid token")
+
+    handler = _reconnect_handler(integration, hass)
+    call = MagicMock()
+    call.data = {}
+    with caplog.at_level(logging.WARNING):
+        await handler(call)
+
+    assert "rejected authentication" in caplog.text
+    assert "still in progress" not in caplog.text
+    second.connect.assert_awaited_once()
+
+
+def _unique_id_updates(hass) -> list:
+    return [
+        call.kwargs["unique_id"]
+        for call in hass.config_entries.async_update_entry.call_args_list
+        if "unique_id" in call.kwargs
+    ]
+
+
+@pytest.mark.asyncio
+async def test_setup_migrates_agent_entry_to_scoped_unique_id() -> None:
+    """An entry set to an agent must not block adding the default agent (#13)."""
+    integration, *_ = _load_integration()
+    hass = _make_hass()
+    entry = _make_entry()
+    entry.unique_id = "localhost:1"
+    entry.options = {"agent_id": "voice"}
+
+    await integration.async_setup_entry(hass, entry)
+
+    assert _unique_id_updates(hass) == ["localhost:1|agent=voice|session=main"]
+
+
+@pytest.mark.asyncio
+async def test_setup_keeps_default_entry_unique_id() -> None:
+    integration, *_ = _load_integration()
+    hass = _make_hass()
+    entry = _make_entry()
+    entry.unique_id = "localhost:1"
+
+    await integration.async_setup_entry(hass, entry)
+
+    assert _unique_id_updates(hass) == []
+
+
+@pytest.mark.asyncio
+async def test_setup_does_not_take_a_unique_id_another_entry_holds() -> None:
+    integration, *_ = _load_integration()
+    hass = _make_hass()
+    other = MagicMock(entry_id="entry-2", unique_id="localhost:1|agent=voice|session=main")
+    hass.config_entries.async_entries = MagicMock(return_value=[other])
+    entry = _make_entry()
+    entry.unique_id = "localhost:1"
+    entry.options = {"agent_id": "voice"}
+
+    await integration.async_setup_entry(hass, entry)
+
+    assert _unique_id_updates(hass) == []

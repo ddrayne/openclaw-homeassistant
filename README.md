@@ -3,7 +3,7 @@
 [![Tests](https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml/badge.svg)](https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml)
 
 <p align="center">
-  <img src="custom_components/openclaw/icon.png" alt="OpenClaw Icon" width="128" height="128">
+  <img src="custom_components/openclaw/brand/icon.png" alt="OpenClaw Icon" width="128" height="128">
 </p>
 
 Talk to your [OpenClaw](https://openclaw.ai/) AI agent through Home Assistant's
@@ -40,8 +40,9 @@ through your smart-home voice assistant.
   - [Model & thinking overrides](#model--thinking-overrides)
   - [Emoji stripping](#emoji-stripping)
   - [TTS response trimming](#tts-response-trimming)
+  - [Response streaming](#response-streaming)
   - [Voice-optimized session](#voice-optimized-session)
-  - [Multiple gateways](#multiple-gateways)
+  - [Multiple gateways and agents](#multiple-gateways-and-agents)
 - [Remote gateway setup](#remote-gateway-setup)
 - [Troubleshooting](#troubleshooting)
 - [Limitations](#limitations)
@@ -60,8 +61,9 @@ through your smart-home voice assistant.
 **Conversation**
 - **Assist conversation agent** — drop-in agent for any Home Assistant voice
   pipeline or the Assist text box.
-- **Streaming responses** — streams partial output on HA versions that support it,
-  with automatic fallback to buffered responses on older versions.
+- **Streaming responses** *(opt-in)* — streams replies into Home Assistant's
+  chat log so speech can start while the agent is still writing (HA 2025.6+).
+  Off by default: replies are returned complete. [Details ›](#response-streaming)
 - **Multi-turn voice** — when the agent asks a follow-up question, the satellite's
   mic stays open so you can answer without repeating the wake word. Automatic, no
   setup. [Details ›](#multi-turn-voice)
@@ -126,8 +128,8 @@ data:
 
 ## Requirements
 
-- **Home Assistant 2024.1.0 or later.** Streaming and multi-turn voice use newer
-  Assist APIs and degrade gracefully on older versions; **proactive voice** needs
+- **Home Assistant 2024.1.0 or later.** Streaming (HA 2025.6+) and multi-turn
+  voice use newer Assist APIs and degrade gracefully on older versions; **proactive voice** needs
   an `assist_satellite` entity (e.g. Home Assistant Voice PE) on a recent HA.
 - A configured [OpenClaw](https://openclaw.ai/) install with the **Gateway running**
   (local or remote).
@@ -229,6 +231,7 @@ All of these are editable any time via **Settings → Devices & Services → Ope
 | **Thinking mode** | gateway default | `off` / `low` / `medium` / `high` |
 | **Strip emojis from TTS** | On | Remove emojis from spoken output |
 | **TTS max characters** | `0` (no limit) | Trim long spoken replies (0–2000) |
+| **Streaming responses** | Off | Stream replies so speech starts sooner (needs TTS max characters `0`) — see [Response streaming](#response-streaming) |
 | **Background work** | On | Slow requests answer later via announce instead of timing out |
 | **Grace period** | `10` s | Silence before a request is deferred to background (3–60) |
 | **Holding phrase** | “On it — I’ll let you know when it’s done.” | Spoken when a request is deferred |
@@ -313,8 +316,8 @@ But agent work like browsing the web or triaging email can stay silent for
 minutes. Instead of ending in “the response took too long”, the integration
 races every request against a short **grace period** (default **10s**):
 
-- **Agent starts talking in time** → the answer streams inline, exactly as
-  normal.
+- **Agent starts talking in time** → the answer is returned inline, exactly as
+  normal (streamed, if **Streaming responses** is on).
 - **Still silent when the grace period ends** → the assistant speaks the
   **holding phrase** (“On it — I’ll let you know when it’s done.”), the run
   continues in the background, and the result is **announced when it finishes**
@@ -394,6 +397,26 @@ for cleaner TTS:
 - **`0`** (default) — no limit.
 - **`> 0`** — trim to that many characters (an ellipsis is added when trimmed).
 
+### Response streaming
+
+**Streaming responses** (off by default) feeds the agent's reply into Home
+Assistant's chat log as it is written, using `ChatLog.async_add_delta_content_stream`
+(HA 2025.6+). On a voice pipeline, HA starts speaking once the first ~60
+characters arrive instead of waiting for the whole reply — noticeably snappier
+for longer answers. Short replies behave the same either way.
+
+- Turn it on under **Configure → Streaming responses**, with **TTS max
+  characters** at `0` (trimming needs the complete text, so a positive limit
+  keeps the complete-reply path).
+- With streaming on, emoji stripping applies to the chat-log text too, not just
+  the spoken reply.
+- With streaming on, text the agent writes before using a tool ("Let me check.")
+  is spoken too, followed by the answer — as with Home Assistant's built-in LLM
+  agents. With it off, only the final reply is spoken.
+- If a reply looks cut short in the Assist dialog, turn streaming off and please
+  [open an issue](https://github.com/ddrayne/openclaw-homeassistant/issues) with
+  debug logs.
+
 ### Voice-optimized session
 
 For the most natural voice experience, point the integration at a dedicated
@@ -412,11 +435,20 @@ Then set **Session Key** to that session under **Configure**. Your other OpenCla
 channels (Telegram, Discord, …) keep their own settings. See the
 [OpenClaw docs](https://docs.openclaw.ai/) for configuring sessions and prompts.
 
-### Multiple gateways
+### Multiple gateways and agents
 
-Add more than one gateway — each needs a unique `host:port`. You get a separate
-conversation entity and device per gateway, and can assign different agents to
-different voice pipelines.
+Each integration entry is one **gateway + agent + session**, with its own
+conversation entity and device. That gives two common setups:
+
+- **Several gateways** — add the integration once per gateway.
+- **Several agents on one gateway** — add the integration again with the same
+  host and port, and pick a different **Agent** (or **Session Key**) on the
+  second screen. Each becomes its own conversation agent, so you can give each
+  one a separate Assist pipeline with its own TTS voice and wake word. The entry
+  title names the agent so they're easy to tell apart.
+
+Adding the same gateway, agent and session twice is still rejected as already
+configured.
 
 ## Remote gateway setup
 

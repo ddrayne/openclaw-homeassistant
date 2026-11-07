@@ -51,7 +51,7 @@
       "unknown": "Unexpected error occurred"
     },
     "abort": {
-      "already_configured": "Gateway is already configured",
+      "already_configured": "This gateway is already set up for this agent and session",
       "reauth_successful": "Re-authentication successful"
     }
   },
@@ -72,6 +72,7 @@
           "thinking": "Thinking mode override (optional)",
           "strip_emojis": "Strip emojis from TTS speech",
           "tts_max_chars": "TTS max characters (0 = no limit)",
+          "streaming_enabled": "Stream replies so speech starts sooner (experimental; needs TTS max characters set to 0)",
           "background_enabled": "Background work: answer slow requests via a later announcement instead of timing out",
           "background_grace": "Grace period (seconds of silence before deferring to background)",
           "holding_phrase": "Holding phrase spoken when a request is deferred",
@@ -80,6 +81,14 @@
           "proactive_mode": "Proactive mode: announce, or start_conversation to also open the mic"
         }
       }
+    },
+    "error": {
+      "already_configured": "Another OpenClaw entry already uses this gateway with the same agent and session",
+      "cannot_connect": "Failed to connect to Gateway",
+      "invalid_auth": "Authentication failed - invalid token",
+      "pairing_required": "Device approval required. Approve this device in OpenClaw, then retry.",
+      "timeout": "Connection timeout",
+      "unknown": "Unexpected error occurred"
     }
   },
   "issues": {
