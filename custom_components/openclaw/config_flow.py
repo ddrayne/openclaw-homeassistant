@@ -47,6 +47,7 @@ from .const import (
     DOMAIN,
     PROACTIVE_MODE_ANNOUNCE,
     PROACTIVE_MODE_START_CONVERSATION,
+    entry_unique_id,
 )
 from .exceptions import (
     DevicePairingRequiredError,
@@ -57,6 +58,32 @@ from .exceptions import (
 from .gateway_client import OpenClawGatewayClient
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _unique_id_for(data: dict[str, Any]) -> str:
+    """Return the entry unique ID for config-flow or options data."""
+    return entry_unique_id(
+        data[CONF_HOST],
+        data[CONF_PORT],
+        data.get(CONF_AGENT_ID),
+        data.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY),
+    )
+
+
+def _entry_title(base_title: str, data: dict[str, Any]) -> str:
+    """Name the agent and session in the title when they are not the defaults.
+
+    With several entries for one gateway (one per agent), the integrations
+    page would otherwise list identical titles.
+    """
+    parts = []
+    agent_id = (data.get(CONF_AGENT_ID) or "").strip()
+    if agent_id:
+        parts.append(agent_id)
+    session_key = data.get(CONF_SESSION_KEY) or DEFAULT_SESSION_KEY
+    if session_key != DEFAULT_SESSION_KEY:
+        parts.append(f"session {session_key}")
+    return f"{base_title} — {', '.join(parts)}" if parts else base_title
 
 
 async def validate_connection(
@@ -234,11 +261,8 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Check if already configured
-            await self.async_set_unique_id(
-                f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}"
-            )
-            self._abort_if_unique_id_configured()
+            # Duplicates are checked in the session step: the same gateway may
+            # be added once per agent and session (#13).
 
             # Security warning for non-SSL remote connections
             if (
@@ -345,8 +369,10 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not thinking:
                 user_input.pop(CONF_THINKING, None)
             data = {**self._config_data, **user_input}
+            await self.async_set_unique_id(_unique_id_for(data))
+            self._abort_if_unique_id_configured()
             return self.async_create_entry(
-                title=self._config_title, data=data
+                title=_entry_title(self._config_title, data), data=data
             )
 
         current_session = self._config_data.get(
@@ -497,6 +523,10 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
+                unique_id = _unique_id_for(user_input)
+                if self._unique_id_taken(unique_id):
+                    errors["base"] = "already_configured"
+                    return await self._async_show_options_form(errors)
                 data = dict(user_input)
                 options = {
                     CONF_TOKEN: user_input.get(CONF_TOKEN),
@@ -522,11 +552,22 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                     self.config_entry,
                     data=data,
                     options=options,
-                    unique_id=f"{data[CONF_HOST]}:{data[CONF_PORT]}",
+                    unique_id=unique_id,
                 )
                 return self.async_create_entry(title="", data={})
 
-        # Show form with current values
+        return await self._async_show_options_form(errors)
+
+    def _unique_id_taken(self, unique_id: str) -> bool:
+        """Return whether another entry already uses this gateway/agent/session."""
+        return any(
+            entry.unique_id == unique_id
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+            if entry.entry_id != self.config_entry.entry_id
+        )
+
+    async def _async_show_options_form(self, errors: dict[str, str]) -> FlowResult:
+        """Show the options form with the entry's current values."""
         current = {**self.config_entry.data, **self.config_entry.options}
         session_keys = await _async_fetch_sessions(self.hass, current)
         current_session = current.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY)

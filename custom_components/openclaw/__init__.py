@@ -31,6 +31,7 @@ from .const import (
     DEFAULT_USE_SSL,
     DOMAIN,
     UPGRADE_AUTH_RETRY_ATTEMPTS,
+    entry_unique_id,
 )
 from .exceptions import (
     DevicePairingRequiredError,
@@ -85,6 +86,36 @@ async def _async_disconnect_quietly(
         )
 
 
+def _async_migrate_unique_id(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Scope the entry's unique ID to its agent and session (#13).
+
+    Entries used to be unique per ``host:port``. An entry already set to a
+    specific agent would then block adding the same gateway again for another
+    agent, so move it to the agent-scoped ID unless another entry holds it.
+    """
+    config = {**entry.data, **entry.options}
+    unique_id = entry_unique_id(
+        entry.data[CONF_HOST],
+        entry.data[CONF_PORT],
+        config.get(CONF_AGENT_ID),
+        config.get(CONF_SESSION_KEY),
+    )
+    if entry.unique_id == unique_id:
+        return
+    if any(
+        other.unique_id == unique_id
+        for other in hass.config_entries.async_entries(DOMAIN)
+        if other.entry_id != entry.entry_id
+    ):
+        _LOGGER.debug(
+            "Not migrating unique ID of %s: %s is already in use",
+            entry.entry_id,
+            unique_id,
+        )
+        return
+    hass.config_entries.async_update_entry(entry, unique_id=unique_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OpenClaw from a config entry."""
     _LOGGER.info("Setting up OpenClaw integration")
@@ -100,6 +131,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.config_entries.async_update_entry(entry, options=migrated)
 
     options = entry.options
+    _async_migrate_unique_id(hass, entry)
 
     # Create Gateway client with config from entry.data
     gateway_client = OpenClawGatewayClient(

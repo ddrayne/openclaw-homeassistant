@@ -40,8 +40,9 @@ through your smart-home voice assistant.
   - [Model & thinking overrides](#model--thinking-overrides)
   - [Emoji stripping](#emoji-stripping)
   - [TTS response trimming](#tts-response-trimming)
+  - [Response streaming](#response-streaming)
   - [Voice-optimized session](#voice-optimized-session)
-  - [Multiple gateways](#multiple-gateways)
+  - [Multiple gateways and agents](#multiple-gateways-and-agents)
 - [Remote gateway setup](#remote-gateway-setup)
 - [Troubleshooting](#troubleshooting)
 - [Limitations](#limitations)
@@ -434,11 +435,20 @@ Then set **Session Key** to that session under **Configure**. Your other OpenCla
 channels (Telegram, Discord, …) keep their own settings. See the
 [OpenClaw docs](https://docs.openclaw.ai/) for configuring sessions and prompts.
 
-### Multiple gateways
+### Multiple gateways and agents
 
-Add more than one gateway — each needs a unique `host:port`. You get a separate
-conversation entity and device per gateway, and can assign different agents to
-different voice pipelines.
+Each integration entry is one **gateway + agent + session**, with its own
+conversation entity and device. That gives two common setups:
+
+- **Several gateways** — add the integration once per gateway.
+- **Several agents on one gateway** — add the integration again with the same
+  host and port, and pick a different **Agent** (or **Session Key**) on the
+  second screen. Each becomes its own conversation agent, so you can give each
+  one a separate Assist pipeline with its own TTS voice and wake word. The entry
+  title names the agent so they're easy to tell apart.
+
+Adding the same gateway, agent and session twice is still rejected as already
+configured.
 
 ## Remote gateway setup
 

@@ -117,3 +117,21 @@ TASK_STOP_TIMEOUT_SECONDS = 5.0
 # times, then report a real authentication failure that needs the user (or the
 # reconnect service, once the proxy is back).
 UPGRADE_AUTH_RETRY_ATTEMPTS = 4
+
+
+def entry_unique_id(
+    host: str, port: int, agent_id: str | None, session_key: str | None
+) -> str:
+    """Return a config entry's unique ID: one entry per gateway, agent and session.
+
+    The default agent on the default session keeps the original ``host:port``
+    form, so existing entries keep their ID and a second default entry for the
+    same gateway is still rejected. A specific agent or session gets its own
+    ID, so several agents on one gateway can each be a separate assistant.
+    """
+    base = f"{host}:{port}"
+    agent = (agent_id or "").strip()
+    session = (session_key or DEFAULT_SESSION_KEY).strip() or DEFAULT_SESSION_KEY
+    if not agent and session == DEFAULT_SESSION_KEY:
+        return base
+    return f"{base}|agent={agent or 'default'}|session={session}"

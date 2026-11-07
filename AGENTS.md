@@ -252,9 +252,11 @@ Different agents for different purposes:
 From Home Assistant, you can route to different agents using sessions:
 
 **Option 1: Multiple Integration Entries**
-- Add integration multiple times
-- Each entry points to different session/agent
-- Select appropriate conversation agent in HA
+- Add the integration again for the same gateway (same host and port)
+- On the second screen, pick a different **Agent** and/or **Session Key** —
+  each gateway + agent + session combination can be added once
+- Select the matching conversation agent in each HA Assist pipeline (each can
+  have its own TTS voice and wake word)
 
 **Option 2: Dynamic Routing (Future)**
 - Single integration

@@ -277,3 +277,52 @@ async def test_reconnect_service_reports_auth_failure(caplog) -> None:
     assert "rejected authentication" in caplog.text
     assert "still in progress" not in caplog.text
     second.connect.assert_awaited_once()
+
+
+def _unique_id_updates(hass) -> list:
+    return [
+        call.kwargs["unique_id"]
+        for call in hass.config_entries.async_update_entry.call_args_list
+        if "unique_id" in call.kwargs
+    ]
+
+
+@pytest.mark.asyncio
+async def test_setup_migrates_agent_entry_to_scoped_unique_id() -> None:
+    """An entry set to an agent must not block adding the default agent (#13)."""
+    integration, *_ = _load_integration()
+    hass = _make_hass()
+    entry = _make_entry()
+    entry.unique_id = "localhost:1"
+    entry.options = {"agent_id": "voice"}
+
+    await integration.async_setup_entry(hass, entry)
+
+    assert _unique_id_updates(hass) == ["localhost:1|agent=voice|session=main"]
+
+
+@pytest.mark.asyncio
+async def test_setup_keeps_default_entry_unique_id() -> None:
+    integration, *_ = _load_integration()
+    hass = _make_hass()
+    entry = _make_entry()
+    entry.unique_id = "localhost:1"
+
+    await integration.async_setup_entry(hass, entry)
+
+    assert _unique_id_updates(hass) == []
+
+
+@pytest.mark.asyncio
+async def test_setup_does_not_take_a_unique_id_another_entry_holds() -> None:
+    integration, *_ = _load_integration()
+    hass = _make_hass()
+    other = MagicMock(entry_id="entry-2", unique_id="localhost:1|agent=voice|session=main")
+    hass.config_entries.async_entries = MagicMock(return_value=[other])
+    entry = _make_entry()
+    entry.unique_id = "localhost:1"
+    entry.options = {"agent_id": "voice"}
+
+    await integration.async_setup_entry(hass, entry)
+
+    assert _unique_id_updates(hass) == []

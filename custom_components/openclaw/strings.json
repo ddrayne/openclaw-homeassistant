@@ -51,7 +51,7 @@
       "unknown": "Unexpected error occurred"
     },
     "abort": {
-      "already_configured": "Gateway is already configured",
+      "already_configured": "This gateway is already set up for this agent and session",
       "reauth_successful": "Re-authentication successful"
     }
   },
@@ -81,6 +81,14 @@
           "proactive_mode": "Proactive mode: announce, or start_conversation to also open the mic"
         }
       }
+    },
+    "error": {
+      "already_configured": "Another OpenClaw entry already uses this gateway with the same agent and session",
+      "cannot_connect": "Failed to connect to Gateway",
+      "invalid_auth": "Authentication failed - invalid token",
+      "pairing_required": "Device approval required. Approve this device in OpenClaw, then retry.",
+      "timeout": "Connection timeout",
+      "unknown": "Unexpected error occurred"
     }
   },
   "issues": {
