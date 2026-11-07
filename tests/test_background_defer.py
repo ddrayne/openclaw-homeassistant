@@ -367,6 +367,174 @@ class TestSlowPath:
         assert calls[0][2]["message"] == "All done"
 
 
+class TestQuietAfterReplying:
+    """The agent starts replying, then goes quiet (a slow tool call)."""
+
+    _OPTIONS = {
+        "background_grace": 0.05,
+        "proactive_satellite": "assist_satellite.kitchen",
+    }
+
+    @pytest.mark.asyncio
+    async def test_agents_words_become_the_holding_line(self) -> None:
+        client, entity = _make_env(_conv_plain, self._OPTIONS)
+        task = _start(_conv_plain, entity)
+        await asyncio.sleep(0.01)
+        client._handle_agent_event(
+            _output_event(RUN_ID, "Let me go through your inbox.")
+        )
+        result = await asyncio.wait_for(task, 2)
+
+        # The turn ends on the agent's own words instead of the canned
+        # phrase, and the run keeps going in the background.
+        assert result.response.speech == "Let me go through your inbox."
+        assert RUN_ID in client._agent_runs
+        assert entity.hass.services.calls == []
+
+        client._handle_agent_event(
+            _output_event(
+                RUN_ID, "Let me go through your inbox. You have 3 urgent emails."
+            )
+        )
+        client._handle_agent_event(_done_event(RUN_ID))
+        await _settle()
+
+        calls = entity.hass.services.calls
+        assert len(calls) == 1
+        # What was already spoken is not repeated in the announcement.
+        assert calls[0][2]["message"] == "You have 3 urgent emails."
+        assert RUN_ID not in client._agent_runs
+
+    @pytest.mark.asyncio
+    async def test_unfinished_sentence_falls_back_to_holding_phrase(self) -> None:
+        client, entity = _make_env(_conv_plain, self._OPTIONS)
+        task = _start(_conv_plain, entity)
+        await asyncio.sleep(0.01)
+        client._handle_agent_event(_output_event(RUN_ID, "Let me check your"))
+        result = await asyncio.wait_for(task, 2)
+
+        assert result.response.speech == _conv_plain.DEFAULT_HOLDING_PHRASE
+
+        client._handle_agent_event(
+            _output_event(RUN_ID, "Let me check your inbox. All clear.")
+        )
+        client._handle_agent_event(_done_event(RUN_ID))
+        await _settle()
+        # Nothing of the reply was spoken, so the whole answer is announced.
+        assert entity.hass.services.calls[0][2]["message"] == (
+            "Let me check your inbox. All clear."
+        )
+
+    @pytest.mark.asyncio
+    async def test_complete_sentences_before_a_fragment_are_kept(self) -> None:
+        client, entity = _make_env(_conv_plain, self._OPTIONS)
+        task = _start(_conv_plain, entity)
+        await asyncio.sleep(0.01)
+        client._handle_agent_event(_output_event(RUN_ID, "Sure. I'll look through"))
+        result = await asyncio.wait_for(task, 2)
+
+        assert result.response.speech == "Sure."
+
+    @pytest.mark.asyncio
+    async def test_deferred_question_does_not_reopen_the_mic(self) -> None:
+        client, entity = _make_env(_conv_plain, self._OPTIONS)
+        task = _start(_conv_plain, entity)
+        await asyncio.sleep(0.01)
+        client._handle_agent_event(
+            _output_event(RUN_ID, "Shall I check spam as well?")
+        )
+        result = await asyncio.wait_for(task, 2)
+
+        assert result.response.speech == "Shall I check spam as well?"
+        # The run is still working; listening now would be confusing.
+        assert result.continue_conversation is False
+
+    @pytest.mark.asyncio
+    async def test_reply_that_keeps_streaming_is_answered_inline(self) -> None:
+        client, entity = _make_env(_conv_plain, {"background_grace": 0.2})
+        task = _start(_conv_plain, entity)
+        for text in ("One.", "One. Two.", "One. Two. Three."):
+            await asyncio.sleep(0.05)  # pauses shorter than the grace period
+            client._handle_agent_event(_output_event(RUN_ID, text))
+        client._handle_agent_event(_done_event(RUN_ID))
+        result = await asyncio.wait_for(task, 2)
+
+        assert result.response.speech == "One. Two. Three."
+        assert entity.hass.services.calls == []
+
+    @pytest.mark.asyncio
+    async def test_streamed_preamble_ends_the_turn(self) -> None:
+        client, entity = _make_env(_conv_stream, self._OPTIONS)
+        chat_log = _conv_stream.conversation.ChatLog()
+        task = asyncio.create_task(
+            entity._async_handle_message(_user_input(_conv_stream), chat_log)
+        )
+        await asyncio.sleep(0.01)
+        client._handle_agent_event(_output_event(RUN_ID, "Checking your calendar."))
+        result = await asyncio.wait_for(task, 2)
+
+        assert chat_log.deltas == [
+            {"role": "assistant"},
+            {"content": "Checking your calendar."},
+        ]
+        assert result.response.speech == "Checking your calendar."
+        assert result.continue_conversation is False
+
+        client._handle_agent_event(
+            _output_event(RUN_ID, "Checking your calendar. You're free at 3.")
+        )
+        client._handle_agent_event(_done_event(RUN_ID))
+        await _settle()
+        assert entity.hass.services.calls[0][2]["message"] == "You're free at 3."
+
+    @pytest.mark.asyncio
+    async def test_streamed_fragment_is_finished_with_holding_phrase(self) -> None:
+        client, entity = _make_env(_conv_stream, self._OPTIONS)
+        chat_log = _conv_stream.conversation.ChatLog()
+        task = asyncio.create_task(
+            entity._async_handle_message(_user_input(_conv_stream), chat_log)
+        )
+        await asyncio.sleep(0.01)
+        client._handle_agent_event(_output_event(RUN_ID, "Checking your"))
+        await asyncio.wait_for(task, 2)
+
+        # Streamed text cannot be taken back; finish the turn cleanly instead.
+        assert chat_log.deltas == [
+            {"role": "assistant"},
+            {"content": "Checking your"},
+            {"content": "\n\n" + _conv_stream.DEFAULT_HOLDING_PHRASE},
+        ]
+
+
+class TestHoldingLineHelpers:
+    @pytest.mark.parametrize(
+        ("said", "expected"),
+        [
+            ("Let me check.", "Let me check."),
+            ("Sure. I'll look", "Sure."),
+            ("Done! Anything else?", "Done! Anything else?"),
+            ('He said "on my way."', 'He said "on my way."'),
+            ("Version 1.9 is", "FALLBACK"),  # a dot inside a number is no end
+            ("Checking", "FALLBACK"),
+            ("   ", "FALLBACK"),
+        ],
+    )
+    def test_holding_line(self, said: str, expected: str) -> None:
+        assert _conv_plain._holding_line(said, "FALLBACK") == expected
+
+    @pytest.mark.parametrize(
+        ("text", "prefix", "expected"),
+        [
+            ("Let me check. All clear.", "Let me check.", "All clear."),
+            ("All clear.", "Let me check.", "All clear."),
+            ("Done.", "Done.", ""),
+            ("Answer.", "", "Answer."),
+        ],
+    )
+    def test_without_prefix(self, text: str, prefix: str, expected: str) -> None:
+        assert _conv_plain._without_prefix(text, prefix) == expected
+
+
 class TestConcurrentDeferredRuns:
     """Multiple deferred requests each report back independently."""
 

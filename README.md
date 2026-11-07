@@ -234,7 +234,7 @@ All of these are editable any time via **Settings → Devices & Services → Ope
 | **Streaming responses** | Off | Stream replies so speech starts sooner (needs TTS max characters `0`) — see [Response streaming](#response-streaming) |
 | **Background work** | On | Slow requests answer later via announce instead of timing out |
 | **Grace period** | `10` s | Silence before a request is deferred to background (3–60) |
-| **Holding phrase** | “On it — I’ll let you know when it’s done.” | Spoken when a request is deferred |
+| **Holding phrase** | “On it — I’ll let you know when it’s done.” | Spoken when a request is deferred before the agent has said a complete sentence |
 | **Proactive voice** | Off | Let the agent speak first on a satellite |
 | **Satellite to speak on** | — | `assist_satellite` entity used for proactive announcements |
 | **Proactive mode** | `announce` | `announce` (speak) or `start_conversation` (speak + reopen mic) |
@@ -318,12 +318,25 @@ races every request against a short **grace period** (default **10s**):
 
 - **Agent starts talking in time** → the answer is returned inline, exactly as
   normal (streamed, if **Streaming responses** is on).
+- **Agent starts talking, then goes quiet for the grace period** (typically a
+  slow tool call after “Let me go through your inbox.”) → the turn ends with
+  **the agent's own words** as the holding line, up to its last complete
+  sentence. The run continues in the background, and the rest of the answer is
+  announced when it finishes, without repeating what was already said. If the
+  agent stopped mid-sentence, the **holding phrase** is used instead.
 - **Still silent when the grace period ends** → the assistant speaks the
   **holding phrase** (“On it — I’ll let you know when it’s done.”), the run
   continues in the background, and the result is **announced when it finishes**
   — on the satellite you spoke to, falling back to the configured proactive
   satellite. Failures are announced too, so a deferred request never goes
   silent.
+
+A deferred turn never reopens the satellite's mic, even if its holding line is
+a question, because the agent is still working.
+
+> **Tip:** ask your voice agent to say briefly what it is about to do before
+> using a tool (“Let me check your calendar.”). That sentence then becomes the
+> holding line, which sounds far more natural than a fixed phrase.
 
 On by default; tune or disable it under **Configure** (**Background work**,
 **Grace period**, **Holding phrase**). It works even with proactive voice off —

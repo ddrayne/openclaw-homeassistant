@@ -994,3 +994,51 @@ class TestEarlyAgentEvents:
             {"payload": {"runId": "unrelated", "status": "ok"}}
         )
         assert client._early_agent_events == {}
+
+
+class TestStreamRunUntilQuiet:
+    @pytest.mark.asyncio
+    async def test_quiet_run_stays_tracked_for_wait_run(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+        run.add_output("Let me check.")
+
+        chunks = []
+        with pytest.raises(_gateway_client.AgentRunQuiet):
+            async for chunk in client.stream_run_until_quiet(run, 0.05):
+                chunks.append(chunk)
+
+        assert chunks == ["Let me check."]
+        # Still tracked: the background consumer finishes it with wait_run.
+        assert client._agent_runs == {"run-1": run}
+
+        run.add_output("Let me check. All clear.")
+        run.set_complete("ok", None)
+        assert await client.wait_run(run, 1.0) == "Let me check. All clear."
+        assert client._agent_runs == {}
+
+    @pytest.mark.asyncio
+    async def test_completed_run_is_cleaned_up(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+        run.add_output("Hi")
+        run.set_complete("ok", None)
+
+        chunks = [c async for c in client.stream_run_until_quiet(run, 1.0)]
+
+        assert chunks == ["Hi"]
+        assert client._agent_runs == {}
+
+    @pytest.mark.asyncio
+    async def test_failed_run_raises_and_is_cleaned_up(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+        run.set_complete("error", "boom")
+
+        with pytest.raises(AgentExecutionError, match="boom"):
+            async for _chunk in client.stream_run_until_quiet(run, 1.0):
+                pass
+        assert client._agent_runs == {}
