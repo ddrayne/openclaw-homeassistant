@@ -114,6 +114,39 @@ class TestHandleAgentEvent:
             queued.append(run._stream_queue.get_nowait())
         assert queued == ["It's sunny and", " seventy-two", " degrees."]
 
+    def test_replays_captured_gateway_delta_sequence(self) -> None:
+        # Event sequence captured from a live gateway 2026.10.4 where Voice PE
+        # spoke only "He": the snapshot arrives once, then deltas only (#16).
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        for data in (
+            {"text": "He", "delta": "He", "itemId": "i"},
+            {"delta": "ute leichter Regen,", "itemId": "i"},
+            {"delta": " vierzehn Grad.", "itemId": "i"},
+        ):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+
+        assert run.get_response() == "Heute leichter Regen, vierzehn Grad."
+
+    @pytest.mark.asyncio
+    async def test_iter_stream_yields_delta_only_chunks(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        for data in ({"text": "He", "delta": "He"}, {"delta": "llo"}):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+        run.set_complete("ok", None)
+
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["He", "llo"]
+
     def test_delta_for_new_item_starts_its_text(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         run = AgentRun("run-1")
