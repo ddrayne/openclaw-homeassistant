@@ -3,14 +3,13 @@
 Used by tests that need to exercise `custom_components/openclaw/conversation.py`
 without a real Home Assistant installation.
 
-The `streaming` argument controls the shape of the stubbed `ConversationResult`
-/ `StreamingConversationResult` so individual tests can exercise each code path
-in `_build_streaming_result`:
+The `streaming` argument controls whether the stubbed `ChatLog` supports
+Home Assistant's delta streaming API, so tests can exercise both paths:
 
-- "none":     No streaming support. `_supports_streaming_result()` -> False.
-- "primary":  `ConversationResult` accepts `setattr(..., "response_stream", ...)`.
-- "fallback": `ConversationResult` rejects that setattr (via __slots__), and a
-              separate `StreamingConversationResult` class is exposed.
+- "none":    No streaming support. `_supports_streaming_result()` -> False.
+- "chatlog": `ChatLog.async_add_delta_content_stream` and
+             `conversation.async_get_result_from_chat_log` exist, mirroring
+             how HA (2025.6+) streams LLM output into TTS.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, AsyncIterable, AsyncIterator
 
 
 def _stub_module(name: str) -> ModuleType:
@@ -59,53 +58,23 @@ def load_conversation_module(*, streaming: str = "none") -> ModuleType:
         pass
 
     class AssistantContent:
-        def __init__(self, agent_id: str, content: str) -> None:
+        def __init__(self, agent_id: str, content: str | None = None) -> None:
             self.agent_id = agent_id
             self.content = content
 
     class ConversationInput:
         pass
 
-    class ChatLog:
-        def async_add_assistant_content_without_tools(self, _content: Any) -> None:
-            return None
-
-    if streaming == "fallback":
-        # __slots__ omits response_stream so setattr raises AttributeError,
-        # forcing _build_streaming_result into the StreamingConversationResult branch.
-        class ConversationResult:
-            __slots__ = ("response", "conversation_id", "continue_conversation")
-
-            def __init__(self, response: Any, conversation_id: Any = None) -> None:
-                self.response = response
-                self.conversation_id = conversation_id
-                self.continue_conversation = False
-
-        class StreamingConversationResult:
-            def __init__(
-                self,
-                response: Any,
-                conversation_id: Any = None,
-                response_stream: Any = None,
-            ) -> None:
-                self.response = response
-                self.conversation_id = conversation_id
-                self.response_stream = response_stream
-                self.continue_conversation = False
-
-        conversation_mod.StreamingConversationResult = StreamingConversationResult
-    else:
-        class ConversationResult:
-            # Annotation is what _supports_streaming_result inspects in "primary"
-            # mode; harmless when unused in "none" mode.
-            __annotations__ = (
-                {"response_stream": object} if streaming == "primary" else {}
-            )
-
-            def __init__(self, response: Any, conversation_id: Any = None) -> None:
-                self.response = response
-                self.conversation_id = conversation_id
-                self.continue_conversation = False
+    class ConversationResult:
+        def __init__(
+            self,
+            response: Any,
+            conversation_id: Any = None,
+            continue_conversation: bool = False,
+        ) -> None:
+            self.response = response
+            self.conversation_id = conversation_id
+            self.continue_conversation = continue_conversation
 
     class IntentResponse:
         def __init__(self, language: str) -> None:
@@ -114,6 +83,61 @@ def load_conversation_module(*, streaming: str = "none") -> ModuleType:
 
         def async_set_speech(self, message: str) -> None:
             self.speech = message
+
+    if streaming == "chatlog":
+
+        class ChatLog:
+            """Mirror of HA's ChatLog delta streaming (assistant role only)."""
+
+            def __init__(self) -> None:
+                self.content: list[Any] = []
+                self.deltas: list[dict] = []
+
+            def async_add_assistant_content_without_tools(
+                self, content: Any
+            ) -> None:
+                self.content.append(content)
+
+            async def async_add_delta_content_stream(
+                self, agent_id: str, stream: AsyncIterable[dict]
+            ) -> AsyncIterator[Any]:
+                current: AssistantContent | None = None
+                async for delta in stream:
+                    self.deltas.append(delta)
+                    if "role" in delta:
+                        if current is not None:
+                            self.content.append(current)
+                            yield current
+                        current = AssistantContent(
+                            agent_id, delta.get("content") or ""
+                        )
+                        continue
+                    assert current is not None, "delta before role"
+                    current.content += delta.get("content") or ""
+                if current is not None:
+                    self.content.append(current)
+                    yield current
+
+        def async_get_result_from_chat_log(
+            user_input: Any, chat_log: ChatLog
+        ) -> ConversationResult:
+            intent_response = IntentResponse(language=user_input.language)
+            intent_response.async_set_speech(chat_log.content[-1].content or "")
+            return ConversationResult(
+                response=intent_response,
+                conversation_id=user_input.conversation_id,
+            )
+
+        conversation_mod.async_get_result_from_chat_log = (
+            async_get_result_from_chat_log
+        )
+    else:
+
+        class ChatLog:
+            def async_add_assistant_content_without_tools(
+                self, _content: Any
+            ) -> None:
+                return None
 
     conversation_mod.ConversationEntity = ConversationEntity
     conversation_mod.AssistantContent = AssistantContent
