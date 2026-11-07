@@ -792,6 +792,62 @@ class TestEarlyAgentEvents:
     """The Gateway may publish text and terminal events before its agent RPC ack."""
 
     @pytest.mark.asyncio
+    async def test_events_in_same_read_as_ack_are_not_lost(self) -> None:
+        """The ack and the run's first events can arrive in one websocket read.
+
+        The receive loop then handles them back to back. Resolving the ack's
+        future only *schedules* the waiting request, so without buffering the
+        events are dispatched before the run is registered and dropped, and
+        the request waits for a completion that already happened.
+        """
+        client = OpenClawGatewayClient(
+            "localhost", 1, None, agent_id="main", timeout=1.0
+        )
+        gateway = client._gateway
+        sent = asyncio.Event()
+
+        async def send_request(**_kwargs):
+            future = asyncio.get_running_loop().create_future()
+            gateway._pending_requests["req-1"] = future
+            sent.set()
+            return await future
+
+        gateway.send_request = send_request
+        request = asyncio.create_task(client.send_agent_request("hi"))
+        await sent.wait()
+
+        for message in (
+            {
+                "type": "res",
+                "id": "req-1",
+                "ok": True,
+                "payload": {"runId": "r1", "status": "accepted"},
+            },
+            {
+                "type": "event",
+                "event": "agent",
+                "payload": {
+                    "runId": "r1",
+                    "stream": "assistant",
+                    "data": {"text": "Hello there", "delta": "Hello there"},
+                },
+            },
+            {
+                "type": "event",
+                "event": "agent",
+                "payload": {
+                    "runId": "r1",
+                    "stream": "lifecycle",
+                    "data": {"phase": "end"},
+                },
+            },
+        ):
+            await gateway._handle_message(message)
+
+        assert await asyncio.wait_for(request, 2) == "Hello there"
+        assert client._early_agent_events == {}
+
+    @pytest.mark.asyncio
     async def test_fast_run_finishes_before_ack(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None, agent_id="main")
 
