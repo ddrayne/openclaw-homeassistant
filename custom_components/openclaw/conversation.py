@@ -45,7 +45,7 @@ from .exceptions import (
     GatewayConnectionError,
     GatewayTimeoutError,
 )
-from .gateway_client import AgentRun, OpenClawGatewayClient
+from .gateway_client import AgentRun, AgentRunQuiet, OpenClawGatewayClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,6 +84,48 @@ def response_expects_followup(text: str) -> bool:
     the wake word. We treat any "?" in the reply as a follow-up cue.
     """
     return "?" in (text or "")
+
+
+# A sentence end: terminal punctuation, optionally followed by closing quotes
+# or brackets, then whitespace or the end of the text.
+_SENTENCE_END = re.compile(r"[.!?\u2026][\"'\u201d\u2019)\]]*(?=\s|$)")
+
+
+def _holding_line(said: str, fallback: str) -> str:
+    """Return what the agent has said, up to its last complete sentence.
+
+    Used as the holding line when a run goes quiet after it started replying,
+    so the agent's own words ("Let me go through your inbox.") replace the
+    canned phrase. Falls back to the configured phrase until the agent has
+    finished a sentence, so the turn never ends mid-word.
+    """
+    text = said.strip()
+    ends = [match.end() for match in _SENTENCE_END.finditer(text)]
+    return text[: ends[-1]] if ends else fallback
+
+
+def _ends_sentence(text: str) -> bool:
+    """Return whether the text ends on a complete sentence."""
+    stripped = text.rstrip()
+    return bool(stripped) and any(
+        match.end() == len(stripped) for match in _SENTENCE_END.finditer(stripped)
+    )
+
+
+def _without_prefix(text: str, prefix: str) -> str:
+    """Drop what was already spoken from the start of the final answer."""
+    spoken = prefix.strip()
+    if spoken and text.lstrip().startswith(spoken):
+        return text.lstrip()[len(spoken):].strip()
+    return text
+
+
+@dataclasses.dataclass
+class _Deferral:
+    """Whether an inline reply went quiet, and what was said before that."""
+
+    quiet: bool = False
+    said: str = ""
 
 
 def _reply_or_fallback(text: str | None) -> str:
@@ -374,8 +416,14 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         user_input: conversation.ConversationInput,
         chat_log: conversation.ChatLog,
         response_text: str,
+        expects_followup: bool | None = None,
     ) -> conversation.ConversationResult:
-        """Build a completed (non-streaming) conversation result."""
+        """Build a completed (non-streaming) conversation result.
+
+        ``expects_followup`` overrides the question heuristic; a deferred turn
+        passes False so the satellite does not reopen the mic while the run
+        is still working in the background.
+        """
         intent_response = intent.IntentResponse(language=user_input.language)
         self._finalize_response(
             user_input, chat_log, response_text, intent_response
@@ -384,9 +432,9 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             response=intent_response,
             conversation_id=user_input.conversation_id,
         )
-        _set_continue_conversation(
-            result, response_expects_followup(response_text)
-        )
+        if expects_followup is None:
+            expects_followup = response_expects_followup(response_text)
+        _set_continue_conversation(result, expects_followup)
         return result
 
     async def _handle_with_grace(
@@ -398,11 +446,15 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
     ) -> conversation.ConversationResult:
         """Race the agent run against the grace period.
 
-        First content within the grace period answers inline exactly as
-        before; a silent run is detached to a background task that announces
-        its result on the originating satellite when it finishes.
+        A run that says nothing within the grace period is detached to a
+        background task that announces its result when it finishes, after the
+        configured holding phrase. A run that starts replying is answered
+        inline - unless it then goes quiet for the grace period (typically a
+        slow tool call): the turn ends with what the agent has said so far as
+        the holding line, and the rest is announced when it finishes.
         """
         grace = config.get(CONF_BACKGROUND_GRACE, DEFAULT_BACKGROUND_GRACE)
+        holding_phrase = config.get(CONF_HOLDING_PHRASE, DEFAULT_HOLDING_PHRASE)
         agent_run = await self._gateway_client.begin_agent_run(user_message)
 
         try:
@@ -412,32 +464,74 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
                 user_input, chat_log, agent_run, config
             )
 
+        deferral = _Deferral()
         streaming_result = await self._build_streaming_result(
             user_input,
             chat_log,
             user_message,
-            chunk_source=self._resume_stream(agent_run, first_chunk),
+            chunk_source=self._resume_until_quiet(
+                agent_run, first_chunk, grace, deferral, holding_phrase
+            ),
+            deferral=deferral,
         )
         if streaming_result is not None:
+            if deferral.quiet:
+                self._detach_run(agent_run, user_input, already_said=deferral.said)
             return streaming_result
 
-        # No streaming support: drain to completion and answer plainly.
-        chunks = [first_chunk] if first_chunk else []
-        async for chunk in self._gateway_client.stream_run(agent_run):
+        # No streaming: drain until the run ends or goes quiet.
+        chunks: list[str] = []
+        async for chunk in self._resume_until_quiet(
+            agent_run, first_chunk, grace, deferral
+        ):
             chunks.append(chunk)
+        if deferral.quiet:
+            holding_line = _holding_line(deferral.said, holding_phrase)
+            _LOGGER.debug(
+                "Run %s went quiet after replying; finishing in background",
+                agent_run.run_id,
+            )
+            self._detach_run(
+                agent_run,
+                user_input,
+                already_said=holding_line if holding_line != holding_phrase else "",
+            )
+            return self._build_plain_result(
+                user_input, chat_log, holding_line, expects_followup=False
+            )
         response_text = agent_run.get_response() or "".join(chunks)
         return self._build_plain_result(
             user_input, chat_log, _reply_or_fallback(response_text)
         )
 
-    async def _resume_stream(
-        self, agent_run: AgentRun, first_chunk: str | None
+    async def _resume_until_quiet(
+        self,
+        agent_run: AgentRun,
+        first_chunk: str | None,
+        quiet_after: float,
+        deferral: _Deferral,
+        finish_with: str | None = None,
     ) -> AsyncIterator[str]:
-        """Re-yield the peeked first chunk, then the rest of the run."""
+        """Re-yield the peeked first chunk, then the run until it ends or goes quiet.
+
+        On going quiet, set ``deferral.quiet`` and stop; the caller detaches
+        the run. Streamed text cannot be taken back, so when ``finish_with``
+        is given and the agent stopped mid-sentence, it is added as its own
+        paragraph so the turn does not end on a fragment.
+        """
         if first_chunk:
+            deferral.said += first_chunk
             yield first_chunk
-        async for chunk in self._gateway_client.stream_run(agent_run):
-            yield chunk
+        try:
+            async for chunk in self._gateway_client.stream_run_until_quiet(
+                agent_run, quiet_after
+            ):
+                deferral.said += chunk
+                yield chunk
+        except AgentRunQuiet:
+            deferral.quiet = True
+            if finish_with and not _ends_sentence(deferral.said):
+                yield ("\n\n" if deferral.said.strip() else "") + finish_with
 
     def _defer_to_background(
         self,
@@ -451,8 +545,21 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             "Run %s silent past grace period; deferring to background",
             agent_run.run_id,
         )
+        self._detach_run(agent_run, user_input)
+        holding_phrase = config.get(CONF_HOLDING_PHRASE, DEFAULT_HOLDING_PHRASE)
+        return self._build_plain_result(
+            user_input, chat_log, holding_phrase, expects_followup=False
+        )
+
+    def _detach_run(
+        self,
+        agent_run: AgentRun,
+        user_input: conversation.ConversationInput,
+        already_said: str = "",
+    ) -> None:
+        """Finish the run in the background and announce its result."""
         report = self._background_report(
-            agent_run, getattr(user_input, "device_id", None)
+            agent_run, getattr(user_input, "device_id", None), already_said
         )
         create_background_task = getattr(
             self.hass, "async_create_background_task", None
@@ -468,13 +575,15 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
 
-        holding_phrase = config.get(CONF_HOLDING_PHRASE, DEFAULT_HOLDING_PHRASE)
-        return self._build_plain_result(user_input, chat_log, holding_phrase)
-
     async def _background_report(
-        self, agent_run: AgentRun, device_id: str | None
+        self, agent_run: AgentRun, device_id: str | None, already_said: str = ""
     ) -> None:
-        """Await a detached run and announce its result on a satellite."""
+        """Await a detached run and announce its result on a satellite.
+
+        ``already_said`` is what the turn already spoke before the run was
+        detached; it is left out of the announcement when the final answer
+        starts with it.
+        """
         try:
             # Overall completion budget, deliberately independent of the
             # voice-tuned agent timeout — a short one must not strangle a
@@ -482,6 +591,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             text = await self._gateway_client.wait_run(
                 agent_run, BACKGROUND_MAX_SECONDS
             )
+            text = _without_prefix(text, already_said)
         except GatewayTimeoutError:
             _LOGGER.warning(
                 "Background run %s did not finish within %ss",
@@ -539,6 +649,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         chat_log: conversation.ChatLog,
         user_message: str,
         chunk_source: AsyncIterator[str] | None = None,
+        deferral: _Deferral | None = None,
     ) -> conversation.ConversationResult | None:
         """Stream the reply into the chat log so HA can start TTS early.
 
@@ -565,7 +676,10 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
                 response_text = content.content or ""
 
         result = conversation.async_get_result_from_chat_log(user_input, chat_log)
-        _set_continue_conversation(result, response_expects_followup(response_text))
+        deferred = deferral is not None and deferral.quiet
+        _set_continue_conversation(
+            result, response_expects_followup(response_text) and not deferred
+        )
         return result
 
     async def _stream_deltas(

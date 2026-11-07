@@ -20,6 +20,18 @@ from .gateway import GatewayProtocol
 _LOGGER = logging.getLogger(__name__)
 
 
+class AgentRunQuiet(Exception):
+    """A run that had started replying stopped producing output for a while.
+
+    The run is still going and still tracked: hand it to ``wait_run`` to
+    finish it (for example in the background).
+    """
+
+    def __init__(self, agent_run: "AgentRun") -> None:
+        super().__init__(f"Agent run {agent_run.run_id} went quiet")
+        self.agent_run = agent_run
+
+
 class AgentRun:
     """Tracks an agent run and buffers its events."""
 
@@ -530,6 +542,47 @@ class OpenClawGatewayClient:
 
         finally:
             self._agent_runs.pop(agent_run.run_id, None)
+
+    async def stream_run_until_quiet(
+        self, agent_run: AgentRun, quiet_after: float
+    ) -> AsyncIterator[str]:
+        """Like ``stream_run``, but stop if the run goes quiet.
+
+        If no new chunk arrives for ``quiet_after`` seconds - typically a
+        tool call that takes a while - raise ``AgentRunQuiet`` and leave the
+        run tracked, so the caller can finish it with ``wait_run`` (which then
+        owns cleanup). Otherwise this owns cleanup, exactly like
+        ``stream_run``.
+
+        Raises:
+            AgentRunQuiet: If the run produces nothing for ``quiet_after``
+            AgentExecutionError: If agent execution fails
+        """
+        quiet = False
+        try:
+            while True:
+                try:
+                    chunk = await agent_run.get_chunk(quiet_after)
+                except asyncio.TimeoutError as err:
+                    quiet = True
+                    raise AgentRunQuiet(agent_run) from err
+                if chunk is None:
+                    break
+                yield chunk
+
+            if agent_run.status == "ok":
+                return
+            if agent_run.status == "error":
+                raise AgentExecutionError(
+                    f"Agent execution failed: {agent_run.summary}"
+                )
+            raise AgentExecutionError(
+                f"Unknown agent status: {agent_run.status}"
+            )
+
+        finally:
+            if not quiet:
+                self._agent_runs.pop(agent_run.run_id, None)
 
     async def stream_agent_request(
         self, message: str, idempotency_key: str | None = None

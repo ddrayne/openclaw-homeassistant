@@ -75,7 +75,7 @@
           "streaming_enabled": "Stream replies so speech starts sooner (experimental; needs TTS max characters set to 0)",
           "background_enabled": "Background work: answer slow requests via a later announcement instead of timing out",
           "background_grace": "Grace period (seconds of silence before deferring to background)",
-          "holding_phrase": "Holding phrase spoken when a request is deferred",
+          "holding_phrase": "Holding phrase, spoken when a request is deferred before the agent has said a complete sentence",
           "proactive_enabled": "Proactive voice: let the agent speak unprompted (announcements, reminders, follow-ups)",
           "proactive_satellite": "Satellite to speak on (assist_satellite entity)",
           "proactive_mode": "Proactive mode: announce, or start_conversation to also open the mic"
