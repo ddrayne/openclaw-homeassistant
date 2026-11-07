@@ -68,14 +68,25 @@ class AgentRun:
                     len(self._full_text),
                 )
         else:
-            # Not cumulative (shouldn't happen), just replace
-            _LOGGER.warning(
-                "Non-cumulative text update for %s (was: %d, now: %d)",
+            # Text that does not extend the buffer starts a new assistant item
+            # (e.g. the answer after a tool call) or corrects the text: replace
+            # it. This is routine for multi-item runs, so it is not a warning.
+            _LOGGER.debug(
+                "New assistant text for %s replaces the buffer (was: %d, now: %d)",
                 self.run_id,
                 len(self._full_text),
                 len(output),
             )
             new_text = output
+            if (
+                self._streamed_any
+                and not self._full_text[-1:].isspace()
+                and not output[:1].isspace()
+            ):
+                # Streamed text cannot be taken back, so the new item follows
+                # what was already sent. Separate the two so speech and the
+                # chat log do not run them together ("check.It's 72").
+                new_text = "\n\n" + output
             self._full_text = output
 
         if new_text and self._stream_queue is not None:

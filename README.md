@@ -409,6 +409,9 @@ for longer answers. Short replies behave the same either way.
   keeps the complete-reply path).
 - With streaming on, emoji stripping applies to the chat-log text too, not just
   the spoken reply.
+- With streaming on, text the agent writes before using a tool ("Let me check.")
+  is spoken too, followed by the answer — as with Home Assistant's built-in LLM
+  agents. With it off, only the final reply is spoken.
 - If a reply looks cut short in the Assist dialog, turn streaming off and please
   [open an issue](https://github.com/ddrayne/openclaw-homeassistant/issues) with
   debug logs.

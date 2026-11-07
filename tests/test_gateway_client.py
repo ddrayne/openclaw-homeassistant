@@ -163,6 +163,60 @@ class TestHandleAgentEvent:
 
         assert run.get_response() == "All done."
 
+    @pytest.mark.asyncio
+    async def test_streamed_items_are_separated(self, caplog) -> None:
+        """A second item (the answer after a tool call) must not be glued on."""
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        with caplog.at_level("WARNING"):
+            for data in (
+                {"itemId": "a1", "text": "Let me check.", "delta": "Let me check."},
+                {"itemId": "a2", "text": "It's", "delta": "It's"},
+                {"itemId": "a2", "delta": " 72 degrees."},
+            ):
+                client._handle_agent_event(
+                    {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+                )
+        run.set_complete("ok", None)
+
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["Let me check.", "\n\nIt's", " 72 degrees."]
+        # The buffered (non-streaming) reply is still the final item only.
+        assert run.get_response() == "It's 72 degrees."
+        # Routine item boundaries are not warnings.
+        assert caplog.records == []
+
+    @pytest.mark.asyncio
+    async def test_delta_only_new_item_is_separated_when_streamed(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        for data in (
+            {"itemId": "a1", "text": "Checking.", "delta": "Checking."},
+            {"itemId": "a2", "delta": "All"},
+            {"itemId": "a2", "delta": " done."},
+        ):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+        run.set_complete("ok", None)
+
+        chunks = [chunk async for chunk in run.iter_stream(timeout=1.0)]
+        assert chunks == ["Checking.", "\n\nAll", " done."]
+
+    def test_existing_whitespace_is_not_doubled(self) -> None:
+        run = AgentRun("run-1", stream=True)
+        run.add_output("Checking. ")
+        run.add_output("All done.")
+
+        queued = []
+        while not run._stream_queue.empty():
+            queued.append(run._stream_queue.get_nowait())
+        assert queued == ["Checking. ", "All done."]
+
     def test_ignores_delta_from_non_assistant_stream(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         run = AgentRun("run-1")
