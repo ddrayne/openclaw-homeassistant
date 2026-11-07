@@ -93,6 +93,57 @@ class TestHandleAgentEvent:
 
         assert run.get_response() == "Hi"
 
+    def test_appends_delta_only_assistant_events(self) -> None:
+        # Newer gateways send the text snapshot only on the first event.
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1", stream=True)
+        client._agent_runs["run-1"] = run
+
+        for data in (
+            {"itemId": "a1", "text": "It's sunny and", "delta": "It's sunny and"},
+            {"itemId": "a1", "delta": " seventy-two"},
+            {"itemId": "a1", "delta": " degrees."},
+        ):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+
+        assert run.get_response() == "It's sunny and seventy-two degrees."
+        queued = []
+        while not run._stream_queue.empty():
+            queued.append(run._stream_queue.get_nowait())
+        assert queued == ["It's sunny and", " seventy-two", " degrees."]
+
+    def test_delta_for_new_item_starts_its_text(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        for data in (
+            {"itemId": "a1", "text": "Checking.", "delta": "Checking."},
+            {"itemId": "a2", "delta": "All"},
+            {"itemId": "a2", "delta": " done."},
+        ):
+            client._handle_agent_event(
+                {"payload": {"runId": "run-1", "stream": "assistant", "data": data}}
+            )
+
+        assert run.get_response() == "All done."
+
+    def test_ignores_delta_from_non_assistant_stream(self) -> None:
+        client = OpenClawGatewayClient("localhost", 1, None)
+        run = AgentRun("run-1")
+        client._agent_runs["run-1"] = run
+
+        client._handle_agent_event(
+            {"payload": {"runId": "run-1", "stream": "assistant", "data": {"text": "Hi"}}}
+        )
+        client._handle_agent_event(
+            {"payload": {"runId": "run-1", "stream": "thinking", "data": {"delta": "hmm"}}}
+        )
+
+        assert run.get_response() == "Hi"
+
     def test_buffers_output_from_result_payload_text(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         run = AgentRun("run-1")

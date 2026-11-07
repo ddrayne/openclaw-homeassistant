@@ -30,6 +30,9 @@ class AgentRun:
         self.complete_event = asyncio.Event()
         # Gateway sends cumulative text, not incremental
         self._full_text: str = ""
+        # Assistant item whose text is buffered, so delta-only events extend
+        # the right item instead of a previous one.
+        self._text_item_id: str | None = None
         self._stream_queue: asyncio.Queue[str | None] | None = (
             asyncio.Queue() if stream else None
         )
@@ -77,6 +80,24 @@ class AgentRun:
         if new_text and self._stream_queue is not None:
             self._stream_queue.put_nowait(new_text)
             self._streamed_any = True
+
+    def add_delta(self, delta: str, item_id: str | None = None) -> None:
+        """Add incremental text from a delta-only assistant event.
+
+        Newer gateways send the full ``text`` snapshot only on an item's first
+        assistant event and ``delta`` alone afterwards. A delta for a different
+        item starts that item's text, matching how a new item's snapshot
+        replaces the previous one in ``add_output``.
+        """
+        if not delta:
+            return
+        if item_id and self._text_item_id and item_id != self._text_item_id:
+            self._text_item_id = item_id
+            self.add_output(delta)
+            return
+        if item_id:
+            self._text_item_id = item_id
+        self.add_output(self._full_text + delta)
 
     def set_complete(self, status: str, summary: str | None = None) -> None:
         """Mark run as complete."""
@@ -516,9 +537,21 @@ class OpenClawGatewayClient:
         if not isinstance(data, dict):
             data = {}
 
+        item_id = data.get("itemId") if isinstance(data.get("itemId"), str) else None
+
         output = payload.get("output")
         if not output and "text" in data:
             output = data.get("text")
+            if output and item_id:
+                agent_run._text_item_id = item_id
+        if (
+            not output
+            and isinstance(data.get("delta"), str)
+            and payload.get("stream") in (None, "assistant")
+        ):
+            # Delta-only assistant event (snapshot omitted after the first).
+            agent_run.add_delta(data["delta"], item_id)
+            return
         if not output:
             result = payload.get("result")
             if isinstance(result, dict):
