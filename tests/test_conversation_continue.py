@@ -285,6 +285,63 @@ async def test_streaming_skipped_when_tts_trimming_enabled() -> None:
     assert result.response.speech == "A rat..."
 
 
+# ---------- empty replies ----------
+
+
+async def test_empty_reply_speaks_fallback(caplog) -> None:
+    """A run that completes with no text must not leave Assist empty ("...")."""
+    conv = load_conversation_module(streaming="none")
+    gateway = _make_gateway()
+
+    async def fake_send(_message: str, **_kw) -> str:
+        return ""
+
+    gateway.send_agent_request = fake_send
+    entity = conv.OpenClawConversationEntity(_make_entry(), gateway)
+    result = await entity._async_handle_message(_make_user_input(), FakeChatLog())
+
+    assert result.response.speech == conv.EMPTY_REPLY_PHRASE
+    assert "without any reply text" in caplog.text
+
+
+async def test_streaming_empty_reply_speaks_fallback() -> None:
+    conv = load_conversation_module(streaming="chatlog")
+    gateway = _make_gateway()
+
+    async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+    gateway.stream_agent_request = fake_stream
+    entity = conv.OpenClawConversationEntity(_make_entry(), gateway)
+    chat_log = conv.conversation.ChatLog()
+    result = await entity._async_handle_message(_make_user_input(), chat_log)
+
+    assert chat_log.deltas == [
+        {"role": "assistant"},
+        {"content": conv.EMPTY_REPLY_PHRASE},
+    ]
+    assert result.response.speech == conv.EMPTY_REPLY_PHRASE
+
+
+async def test_streaming_emoji_only_reply_is_not_treated_as_empty() -> None:
+    """The agent did reply; stripping its only emoji is not a missing reply."""
+    conv = load_conversation_module(streaming="chatlog")
+    gateway = _make_gateway()
+
+    async def fake_stream(_message: str, **_kw) -> AsyncIterator[str]:
+        yield "\U0001F44D"
+
+    gateway.stream_agent_request = fake_stream
+    entry = _make_entry()
+    entry.data["strip_emojis"] = True
+    entity = conv.OpenClawConversationEntity(entry, gateway)
+    chat_log = conv.conversation.ChatLog()
+    await entity._async_handle_message(_make_user_input(), chat_log)
+
+    assert {"content": conv.EMPTY_REPLY_PHRASE} not in chat_log.deltas
+
+
 # ---------- error path ----------
 
 

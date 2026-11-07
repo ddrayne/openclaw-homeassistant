@@ -18,6 +18,7 @@ from .const import (
     BACKGROUND_ERROR_PHRASE,
     BACKGROUND_MAX_SECONDS,
     BACKGROUND_TIMEOUT_PHRASE,
+    EMPTY_REPLY_PHRASE,
     CONF_BACKGROUND_ENABLED,
     CONF_BACKGROUND_GRACE,
     CONF_HOLDING_PHRASE,
@@ -83,6 +84,21 @@ def response_expects_followup(text: str) -> bool:
     the wake word. We treat any "?" in the reply as a follow-up cue.
     """
     return "?" in (text or "")
+
+
+def _reply_or_fallback(text: str | None) -> str:
+    """Return the agent's reply, or a spoken fallback if it is empty.
+
+    A run that completes without any text would otherwise leave Assist with an
+    empty response (shown as "..." with nothing spoken).
+    """
+    if text and text.strip():
+        return text
+    _LOGGER.warning(
+        "OpenClaw finished without any reply text. Enable debug logging for "
+        "custom_components.openclaw to see the agent events it sent"
+    )
+    return EMPTY_REPLY_PHRASE
 
 
 def _set_continue_conversation(
@@ -308,7 +324,9 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             response_text = await self._gateway_client.send_agent_request(
                 user_message
             )
-            return self._build_plain_result(user_input, chat_log, response_text)
+            return self._build_plain_result(
+                user_input, chat_log, _reply_or_fallback(response_text)
+            )
 
         except GatewayAuthenticationError as err:
             _LOGGER.error("Gateway authentication error: %s", err)
@@ -408,7 +426,9 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         async for chunk in self._gateway_client.stream_run(agent_run):
             chunks.append(chunk)
         response_text = agent_run.get_response() or "".join(chunks)
-        return self._build_plain_result(user_input, chat_log, response_text)
+        return self._build_plain_result(
+            user_input, chat_log, _reply_or_fallback(response_text)
+        )
 
     async def _resume_stream(
         self, agent_run: AgentRun, first_chunk: str | None
@@ -554,8 +574,11 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         """Translate Gateway chunks into ChatLog assistant deltas."""
         yield {"role": "assistant"}
         had_content = False
+        had_raw_content = False
         try:
             async for chunk in chunk_source:
+                if chunk and chunk.strip():
+                    had_raw_content = True
                 if chunk and should_strip:
                     # No .strip(): whitespace between chunks must survive.
                     chunk = EMOJI_PATTERN.sub("", chunk)
@@ -597,6 +620,9 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             _LOGGER.exception("Unexpected error in streaming response")
             if not had_content:
                 yield {"content": "An unexpected error occurred. Please try again."}
+        else:
+            if not had_raw_content:
+                yield {"content": _reply_or_fallback("")}
 
     def _finalize_response(
         self,

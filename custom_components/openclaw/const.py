@@ -34,6 +34,9 @@ DEFAULT_BACKGROUND_ENABLED = True
 DEFAULT_BACKGROUND_GRACE = 10  # seconds to wait for first content
 DEFAULT_HOLDING_PHRASE = "On it — I'll let you know when it's done."
 BACKGROUND_ERROR_PHRASE = "Sorry — that request ran into a problem."
+# Spoken when a run completes without any reply text, instead of leaving
+# Assist with an empty response.
+EMPTY_REPLY_PHRASE = "I didn't get a reply from OpenClaw. Please try again."
 BACKGROUND_TIMEOUT_PHRASE = (
     "That's taking longer than expected, so I've stopped waiting for it."
 )

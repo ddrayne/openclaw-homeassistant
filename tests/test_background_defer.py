@@ -171,7 +171,9 @@ class TestFastPath:
         client._handle_agent_event(_done_event(RUN_ID))
         result = await asyncio.wait_for(task, 2)
 
-        assert result.response.speech == ""
+        # An empty run answers with the fallback phrase rather than an empty
+        # response, which Assist shows as "..." with nothing spoken.
+        assert result.response.speech == _conv_plain.EMPTY_REPLY_PHRASE
         assert entity.hass.services.calls == []
 
     @pytest.mark.asyncio
