@@ -81,6 +81,10 @@ class GatewayProtocol:
 
         # Fatal error that stopped the connection loop (auth / protocol)
         self._fatal_error: Exception | None = None
+        # HTTP status of the latest 401/403 upgrade rejection, cleared by a
+        # successful handshake. Lets callers that time out waiting for the
+        # first connection say *why* instead of "may not be reachable".
+        self._upgrade_auth_status: int | None = None
         self._on_fatal_error: Callable[[Exception], None] | None = None
         # Fired after every successful handshake so callers can re-issue
         # per-connection state (e.g. session subscriptions) on reconnect.
@@ -103,6 +107,11 @@ class GatewayProtocol:
         return self._connect_snapshot
 
     @property
+    def upgrade_auth_status(self) -> int | None:
+        """Return the HTTP status of an unresolved 401/403 upgrade rejection."""
+        return self._upgrade_auth_status
+
+    @property
     def presence(self) -> dict[str, Any]:
         """Return the latest presence data."""
         return self._presence
@@ -113,6 +122,7 @@ class GatewayProtocol:
             return
 
         self._fatal_error = None
+        self._upgrade_auth_status = None
         self._connect_task = asyncio.create_task(self._connection_loop())
         self._connect_task.add_done_callback(self._handle_connect_task_done)
 
@@ -251,6 +261,7 @@ class GatewayProtocol:
                         failures = 0
                         upgrade_auth_rejections = 0
                         self._fatal_error = None
+                        self._upgrade_auth_status = None
                         _LOGGER.info("Connected to Gateway successfully")
                         self._last_pong = time.monotonic()
                         connected_at = time.monotonic()
@@ -341,6 +352,7 @@ class GatewayProtocol:
                 status = getattr(getattr(err, "response", None), "status_code", None)
                 if status in (401, 403):
                     upgrade_auth_rejections += 1
+                    self._upgrade_auth_status = status
                     if upgrade_auth_rejections > UPGRADE_AUTH_RETRY_ATTEMPTS:
                         auth_err = GatewayAuthenticationError(
                             f"Gateway rejected connection: HTTP {status}"

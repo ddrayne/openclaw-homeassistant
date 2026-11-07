@@ -30,12 +30,14 @@ from .const import (
     DEFAULT_TTS_MAX_CHARS,
     DEFAULT_USE_SSL,
     DOMAIN,
+    UPGRADE_AUTH_RETRY_ATTEMPTS,
 )
 from .exceptions import (
     DevicePairingRequiredError,
     GatewayAuthenticationError,
     GatewayConnectionError,
     GatewayTimeoutError,
+    GatewayUpgradeRejectedError,
 )
 from .gateway_client import OpenClawGatewayClient
 
@@ -46,6 +48,9 @@ SERVICE_RECONNECT = "reconnect"
 SERVICE_SET_SESSION = "set_session"
 _SERVICE_REGISTERED = "_service_registered"
 _PLATFORMS_LOADED = "_platforms_loaded"
+# Consecutive setup attempts whose connection was refused with HTTP 401/403,
+# per entry. Kept outside hass.data[DOMAIN], which only holds clients and flags.
+_SETUP_UPGRADE_REJECTIONS = f"{DOMAIN}_setup_upgrade_rejections"
 _RECONNECT_SCHEMA = vol.Schema({vol.Optional("entry_id"): str})
 _SESSION_SCHEMA = vol.Schema(
     {
@@ -124,6 +129,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Connect to Gateway
     try:
         await gateway_client.connect()
+        hass.data.get(_SETUP_UPGRADE_REJECTIONS, {}).pop(entry.entry_id, None)
         _LOGGER.info(
             "Connected to OpenClaw Gateway at %s:%s",
             entry.data[CONF_HOST],
@@ -137,6 +143,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _async_disconnect_quietly(gateway_client, entry)
         if isinstance(err, GatewayAuthenticationError):
             raise ConfigEntryAuthFailed(err) from err
+        if isinstance(err, GatewayUpgradeRejectedError):
+            # A 401/403 on the upgrade is retried because a restarting proxy
+            # can reject a valid token. Setup only waits a few seconds and
+            # each retry builds a fresh client, so the connection loop's own
+            # retry budget would restart every attempt and a wrong token would
+            # never surface. Count rejections across attempts instead.
+            rejections = hass.data.setdefault(_SETUP_UPGRADE_REJECTIONS, {})
+            count = rejections.get(entry.entry_id, 0) + 1
+            if count > UPGRADE_AUTH_RETRY_ATTEMPTS:
+                rejections.pop(entry.entry_id, None)
+                raise ConfigEntryAuthFailed(err) from err
+            rejections[entry.entry_id] = count
+            raise ConfigEntryNotReady(err) from err
         if isinstance(err, (GatewayConnectionError, GatewayTimeoutError)):
             raise ConfigEntryNotReady(err) from err
         raise ConfigEntryNotReady(err) from err
@@ -193,6 +212,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 try:
                     await client.disconnect()
                     await client.connect()
+                except GatewayAuthenticationError as err:
+                    _LOGGER.error(
+                        "Reconnect for entry %s failed: the Gateway rejected "
+                        "authentication (%s). Update the token under Settings "
+                        "> Devices & Services > OpenClaw > Configure.",
+                        key,
+                        err,
+                    )
                 except Exception as err:  # pylint: disable=broad-except
                     # ``connect()`` gives up waiting after a few seconds while
                     # its connection loop keeps retrying, so a still-recovering

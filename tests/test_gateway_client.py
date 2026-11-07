@@ -697,6 +697,23 @@ class TestConnect:
         with pytest.raises(GatewayConnectionError, match="Connection timeout"):
             await client.connect()
 
+    @pytest.mark.asyncio
+    async def test_connect_names_upgrade_auth_rejection(self) -> None:
+        """A 401/403 on the upgrade is reported instead of "may not be reachable"."""
+        client = OpenClawGatewayClient("localhost", 1, "tok")
+        client._gateway._upgrade_auth_status = 403
+        client._gateway.connect = AsyncMock()  # type: ignore[attr-defined]
+
+        with pytest.raises(
+            _exceptions.GatewayUpgradeRejectedError, match="HTTP 403"
+        ) as info:
+            await client.connect()
+
+        assert info.value.status_code == 403
+        # Still a connection error, so existing handlers keep treating it as
+        # retryable.
+        assert isinstance(info.value, GatewayConnectionError)
+
     def test_fatal_error_property(self) -> None:
         client = OpenClawGatewayClient("localhost", 1, None)
         assert client.fatal_error is None

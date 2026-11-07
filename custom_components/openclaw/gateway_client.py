@@ -12,6 +12,7 @@ from .exceptions import (
     GatewayAuthenticationError,
     GatewayConnectionError,
     GatewayTimeoutError,
+    GatewayUpgradeRejectedError,
     ProtocolError,
 )
 from .gateway import GatewayProtocol
@@ -235,6 +236,14 @@ class OpenClawGatewayClient:
                 raise GatewayConnectionError(str(fatal)) from fatal
             if fatal:
                 raise GatewayConnectionError(str(fatal)) from fatal
+            status = self._gateway.upgrade_auth_status
+            if status is not None:
+                raise GatewayUpgradeRejectedError(
+                    f"Gateway rejected the connection with HTTP {status}; "
+                    "retrying in case the Gateway or a proxy in front of it "
+                    "is restarting",
+                    status,
+                )
             raise GatewayConnectionError(
                 f"Connection timeout - Gateway at {self._gateway._host}:"
                 f"{self._gateway._port} may not be reachable"

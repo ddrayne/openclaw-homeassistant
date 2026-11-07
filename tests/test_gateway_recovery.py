@@ -305,6 +305,43 @@ class TestUpgradeAuthRetry:
         assert len(calls) == 3
 
 
+class TestUpgradeAuthStatus:
+    @pytest.mark.asyncio
+    async def test_status_tracks_rejections_until_handshake(self, monkeypatch) -> None:
+        """Callers can tell a refused token from an unreachable Gateway."""
+        protocol = GatewayProtocol("localhost", 1, "token")
+        seen: list[int | None] = []
+
+        async def fake_sleep(_delay: float) -> None:
+            seen.append(protocol.upgrade_auth_status)
+
+        monkeypatch.setattr(gateway_module.asyncio, "sleep", fake_sleep)
+        monkeypatch.setattr(gateway_module, "InvalidStatus", FakeInvalidStatus)
+        monkeypatch.setattr(
+            gateway_module, "connect", scripted_connect([401, 403], [])
+        )
+        protocol._handshake = AsyncMock()
+        protocol._receive_loop = AsyncMock(side_effect=asyncio.CancelledError)
+        protocol._heartbeat_loop = AsyncMock(side_effect=asyncio.CancelledError)
+
+        await protocol.connect()
+        await asyncio.wait_for(protocol._connect_task, 5)
+
+        assert seen == [401, 403]
+        assert protocol.upgrade_auth_status is None
+
+    @pytest.mark.asyncio
+    async def test_connect_clears_stale_status(self) -> None:
+        protocol = GatewayProtocol("localhost", 1, "token")
+        protocol._upgrade_auth_status = 403
+        protocol._connection_loop = AsyncMock()
+
+        await protocol.connect()
+
+        assert protocol.upgrade_auth_status is None
+        await asyncio.gather(protocol._connect_task, return_exceptions=True)
+
+
 class TestRetryBackoff:
     def test_delay_grows_then_caps(self) -> None:
         protocol = GatewayProtocol("localhost", 1, None)
