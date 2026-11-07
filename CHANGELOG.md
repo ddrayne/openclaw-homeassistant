@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.10.0-beta.1 — 2026-11-07
+
+### Changed (default behaviours)
+
+- **The holding line can be the agent's own words.** Background work used to
+  defer a request only when the agent said nothing within the grace period. An
+  agent that replied "Let me go through your inbox." and then spent minutes in
+  a tool call kept the satellite waiting inline for up to the Agent Timeout.
+  Now a reply that goes quiet for the grace period is deferred too: the turn
+  ends with what the agent has said, up to its last complete sentence, and the
+  rest of the answer is announced when it finishes, without repeating what was
+  already said. If the agent stopped mid-sentence, the configured holding phrase
+  is used instead.
+- **A deferred turn never reopens the satellite's mic**, even if the holding
+  line is a question, because the agent is still working.
+
 ## 1.9.0 — 2026-11-07
 
 ### Added
