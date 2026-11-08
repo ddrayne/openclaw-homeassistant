@@ -326,3 +326,109 @@ async def test_setup_does_not_take_a_unique_id_another_entry_holds() -> None:
     await integration.async_setup_entry(hass, entry)
 
     assert _unique_id_updates(hass) == []
+
+@pytest.mark.asyncio
+async def test_session_option_changes_without_reload() -> None:
+    """Consecutive session updates must reuse the existing Gateway client."""
+    integration, _, _, client_class = _load_integration()
+    client_class.instances.clear()
+    client_class.connect_error = None
+
+    hass = _make_hass()
+    entry = _make_entry()
+    hass.config_entries.async_reload = AsyncMock()
+
+    assert await integration.async_setup_entry(hass, entry) is True
+
+    client = client_class.instances[-1]
+    client.set_session_key = MagicMock()
+
+    # Retrieve the listener registered during setup.
+    listener = entry.add_update_listener.call_args.args[0]
+
+    entry.options = {**entry.options, integration.CONF_SESSION_KEY: "session-one"}
+    await listener(hass, entry)
+
+    entry.options = {**entry.options, integration.CONF_SESSION_KEY: "session-two"}
+    await listener(hass, entry)
+
+    assert client.set_session_key.call_count == 2
+    assert [
+        call.args[0] for call in client.set_session_key.call_args_list
+    ] == ["session-one", "session-two"]
+
+    hass.config_entries.async_reload.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_other_option_change_triggers_reload() -> None:
+    """Changing non-session configuration must retain normal HA reload."""
+    integration, _, _, client_class = _load_integration()
+    client_class.instances.clear()
+    client_class.connect_error = None
+
+    hass = _make_hass()
+    entry = _make_entry()
+    hass.config_entries.async_reload = AsyncMock()
+
+    assert await integration.async_setup_entry(hass, entry) is True
+
+    client = client_class.instances[-1]
+    client.set_session_key = MagicMock()
+    listener = entry.add_update_listener.call_args.args[0]
+
+    entry.options = {**entry.options, integration.CONF_MODEL: "test-model"}
+    await listener(hass, entry)
+
+    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+    client.set_session_key.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_unchanged_options_do_not_reload() -> None:
+    """An update notification without configuration changes is a no-op."""
+    integration, _, _, client_class = _load_integration()
+    client_class.instances.clear()
+    client_class.connect_error = None
+
+    hass = _make_hass()
+    entry = _make_entry()
+    hass.config_entries.async_reload = AsyncMock()
+
+    assert await integration.async_setup_entry(hass, entry) is True
+
+    client = client_class.instances[-1]
+    client.set_session_key = MagicMock()
+    listener = entry.add_update_listener.call_args.args[0]
+
+    await listener(hass, entry)
+
+    hass.config_entries.async_reload.assert_not_awaited()
+    client.set_session_key.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_session_and_other_option_change_triggers_reload() -> None:
+    """Combined configuration changes require a full reload."""
+    integration, _, _, client_class = _load_integration()
+    client_class.instances.clear()
+    client_class.connect_error = None
+
+    hass = _make_hass()
+    entry = _make_entry()
+    hass.config_entries.async_reload = AsyncMock()
+
+    assert await integration.async_setup_entry(hass, entry) is True
+
+    client = client_class.instances[-1]
+    client.set_session_key = MagicMock()
+    listener = entry.add_update_listener.call_args.args[0]
+
+    entry.options = {
+        **entry.options,
+        integration.CONF_SESSION_KEY: "new-session",
+        integration.CONF_MODEL: "test-model",
+    }
+    await listener(hass, entry)
+
+    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+    client.set_session_key.assert_not_called()

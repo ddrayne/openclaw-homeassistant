@@ -314,8 +314,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return False
         platforms_loaded.add(entry.entry_id)
 
-    # Register reload listener
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    # Track the effective configuration applied to this client.
+    # A session-only change does not require reconnecting to the Gateway.
+    applied_config = {**entry.data, **entry.options}
+
+    async def _async_handle_entry_update(
+        hass: HomeAssistant, updated_entry: ConfigEntry
+    ) -> None:
+        nonlocal applied_config
+
+        current_config = {**updated_entry.data, **updated_entry.options}
+
+        previous_without_session = {
+            key: value
+            for key, value in applied_config.items()
+            if key != CONF_SESSION_KEY
+        }
+        current_without_session = {
+            key: value
+            for key, value in current_config.items()
+            if key != CONF_SESSION_KEY
+        }
+
+        if previous_without_session != current_without_session:
+            await async_reload_entry(hass, updated_entry)
+            return
+
+        new_session = current_config.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY)
+        old_session = applied_config.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY)
+
+        if new_session != old_session:
+            gateway_client.set_session_key(new_session)
+            _LOGGER.debug(
+                "Updated session for entry %s without reloading",
+                updated_entry.entry_id,
+            )
+
+        applied_config = current_config
+
+    # Register update listener and remove it when the entry is unloaded.
+    entry.async_on_unload(entry.add_update_listener(_async_handle_entry_update))
 
     return True
 
