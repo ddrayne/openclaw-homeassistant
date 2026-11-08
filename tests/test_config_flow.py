@@ -312,3 +312,25 @@ async def test_options_save_the_agent_scoped_id(monkeypatch) -> None:
     assert result["type"] == "create_entry"
     kwargs = hass.config_entries.async_update_entry.call_args.kwargs
     assert kwargs["unique_id"] == "gw.local:18789|agent=voice|session=main"
+
+async def test_options_can_clear_token_and_model(monkeypatch) -> None:
+    """Clearing optional fields persists None in data and options."""
+    monkeypatch.setattr(
+        cf, "validate_connection", AsyncMock(return_value={})
+    )
+
+    entry = _entry("e1", "gw.local:18789")
+    hass = _hass(entry)
+
+    result = await _options_flow(hass, entry).async_step_init(
+        _options_input(token="", model="")
+    )
+
+    assert result["type"] == "create_entry"
+
+    kwargs = hass.config_entries.async_update_entry.call_args.kwargs
+
+    assert kwargs["data"]["token"] is None
+    assert kwargs["data"]["model"] is None
+    assert kwargs["options"]["token"] is None
+    assert kwargs["options"]["model"] is None

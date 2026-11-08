@@ -528,8 +528,10 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                     errors["base"] = "already_configured"
                     return await self._async_show_options_form(errors)
                 data = dict(user_input)
+                data[CONF_TOKEN] = user_input.get(CONF_TOKEN) or None
+                data[CONF_MODEL] = user_input.get(CONF_MODEL) or None
                 options = {
-                    CONF_TOKEN: user_input.get(CONF_TOKEN),
+                    CONF_TOKEN: user_input.get(CONF_TOKEN) or None,
                     CONF_USE_SSL: user_input.get(CONF_USE_SSL, DEFAULT_USE_SSL),
                     CONF_TIMEOUT: user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
                     CONF_SESSION_KEY: user_input.get(
@@ -587,7 +589,10 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)
                 ): vol.All(int, vol.Range(min=1, max=65535)),
-                vol.Optional(CONF_TOKEN, default=current.get(CONF_TOKEN)): str,
+                vol.Optional(
+                    CONF_TOKEN,
+                    description={"suggested_value": current.get(CONF_TOKEN) or ""},
+                ): str,
                 vol.Optional(
                     CONF_USE_SSL,
                     default=current.get(CONF_USE_SSL, DEFAULT_USE_SSL),
@@ -600,7 +605,10 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_SESSION_KEY, default=current_session
                 ): session_selector,
                 vol.Optional(CONF_AGENT_ID, default=current_agent): str,
-                vol.Optional(CONF_MODEL, default=current_model): str,
+                vol.Optional(
+                    CONF_MODEL,
+                    description={"suggested_value": current_model},
+                ): str,
                 vol.Optional(CONF_THINKING, default=current_thinking): thinking_selector,
                 vol.Optional(
                     CONF_STRIP_EMOJIS,
