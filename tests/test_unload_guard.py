@@ -49,6 +49,7 @@ async def test_unload_returns_true_when_entry_missing() -> None:
     core_mod.HomeAssistant = object
     exceptions_mod.ConfigEntryAuthFailed = type("ConfigEntryAuthFailed", (Exception,), {})
     exceptions_mod.ConfigEntryNotReady = type("ConfigEntryNotReady", (Exception,), {})
+    exceptions_mod.ConfigEntryError = type("ConfigEntryError", (Exception,), {})
     event_mod.async_track_time_interval = lambda *args, **kwargs: None
     issue_mod.IssueSeverity = type("IssueSeverity", (), {"ERROR": "error"})()
     issue_mod.async_create_issue = lambda *args, **kwargs: None

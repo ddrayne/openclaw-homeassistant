@@ -50,6 +50,7 @@ def _install_ha_stubs():
     core_mod.HomeAssistant = object
     exceptions_mod.ConfigEntryAuthFailed = type("ConfigEntryAuthFailed", (Exception,), {})
     exceptions_mod.ConfigEntryNotReady = type("ConfigEntryNotReady", (Exception,), {})
+    exceptions_mod.ConfigEntryError = type("ConfigEntryError", (Exception,), {})
     event_mod.async_track_time_interval = lambda *args, **kwargs: None
     issue_mod.IssueSeverity = type("IssueSeverity", (), {"ERROR": "error"})()
     issue_mod.async_create_issue = lambda *args, **kwargs: None
@@ -90,6 +91,7 @@ def _load_integration():
         connect_error = None
 
         def __init__(self, *args, **kwargs) -> None:
+            self.init_kwargs = kwargs
             self.disconnect = AsyncMock()
             self.connect = AsyncMock(side_effect=self._connect)
             self.connected = True
@@ -166,6 +168,24 @@ async def test_setup_auth_failure_disconnects_before_raising() -> None:
     client = client_class.instances[-1]
     client.disconnect.assert_awaited_once()
 
+@pytest.mark.asyncio
+async def test_setup_tls_configuration_error_disconnects_before_raising() -> None:
+    """Invalid TLS configuration must fail setup without automatic retries."""
+    integration, exceptions, exceptions_mod, client_class = _load_integration()
+    client_class.instances.clear()
+    client_class.connect_error = exceptions.GatewayTLSConfigurationError(
+        "Invalid TLS configuration: certificate not found"
+    )
+
+    hass = _make_hass()
+    with pytest.raises(exceptions_mod.ConfigEntryError) as exc_info:
+        await integration.async_setup_entry(hass, _make_entry())
+
+    assert "Invalid Gateway TLS configuration" in str(exc_info.value)
+
+    client = client_class.instances[-1]
+    client.disconnect.assert_awaited_once()
+    assert hass.data.get(integration.DOMAIN, {}) == {}
 
 @pytest.mark.asyncio
 async def test_reconnect_service_continues_after_one_entry_fails() -> None:
@@ -326,3 +346,31 @@ async def test_setup_does_not_take_a_unique_id_another_entry_holds() -> None:
     await integration.async_setup_entry(hass, entry)
 
     assert _unique_id_updates(hass) == []
+
+@pytest.mark.asyncio
+async def test_setup_passes_mtls_credentials_to_gateway() -> None:
+    """mTLS options must reach the Gateway client constructor."""
+    integration, _, _, client_class = _load_integration()
+
+    client_class.instances.clear()
+    client_class.connect_error = None
+
+    entry = _make_entry()
+    entry.options = {
+        "use_ssl": True,
+        "client_cert": "/tmp/client.crt",
+        "client_key": "/tmp/client.key",
+    }
+
+    hass = _make_hass()
+
+    result = await integration.async_setup_entry(hass, entry)
+
+    assert result is True
+    assert len(client_class.instances) == 1
+
+    kwargs = client_class.instances[0].init_kwargs
+
+    assert kwargs["use_ssl"] is True
+    assert kwargs["client_cert"] == "/tmp/client.crt"
+    assert kwargs["client_key"] == "/tmp/client.key"

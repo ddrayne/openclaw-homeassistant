@@ -119,6 +119,9 @@ def _ha_stubs() -> dict[str, ModuleType]:
     gateway_client = ModuleType(f"{_PKG}.gateway_client")
     gateway_client.OpenClawGatewayClient = MagicMock()
 
+    gateway = ModuleType(f"{_PKG}.gateway")
+    gateway.create_ssl_context = MagicMock()
+
     return {
         "aiohttp": aiohttp,
         "homeassistant": homeassistant,
@@ -129,6 +132,7 @@ def _ha_stubs() -> dict[str, ModuleType]:
         "homeassistant.helpers": helpers,
         "homeassistant.helpers.selector": selector,
         "homeassistant.helpers.aiohttp_client": aiohttp_client,
+        f"{_PKG}.gateway": gateway,
         f"{_PKG}.gateway_client": gateway_client,
     }
 
@@ -312,3 +316,162 @@ async def test_options_save_the_agent_scoped_id(monkeypatch) -> None:
     assert result["type"] == "create_entry"
     kwargs = hass.config_entries.async_update_entry.call_args.kwargs
     assert kwargs["unique_id"] == "gw.local:18789|agent=voice|session=main"
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"use_ssl": True, "client_cert": "/tmp/client.crt"},
+        {
+            "use_ssl": False,
+            "client_cert": "/tmp/client.crt",
+            "client_key": "/tmp/client.key",
+        },
+    ],
+)
+async def test_options_reject_invalid_mtls_settings(
+    monkeypatch, overrides
+) -> None:
+    """Reject incomplete mTLS settings and mTLS without SSL."""
+    monkeypatch.setattr(
+        cf,
+        "_async_fetch_sessions",
+        AsyncMock(return_value=[]),
+    )
+
+    entry = _entry("e1", "gw.local:18789")
+    hass = _hass(entry)
+
+    result = await _options_flow(hass, entry).async_step_init(
+        _options_input(**overrides)
+    )
+
+    assert result["type"] == "form"
+    assert result["errors"] == {"base": "invalid_mtls"}
+    hass.config_entries.async_update_entry.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_options_reject_missing_mtls_certificate(monkeypatch) -> None:
+    """Missing certificate must produce a specific config-flow error."""
+    monkeypatch.setattr(
+        cf,
+        "_async_fetch_sessions",
+        AsyncMock(return_value=[]),
+    )
+
+    entry = _entry("e1", "gw.local:18789")
+    hass = _hass(entry)
+
+    GatewayTLSConfigurationError = cf.GatewayTLSConfigurationError
+
+    monkeypatch.setattr(
+        cf,
+        "create_ssl_context",
+        MagicMock(
+            side_effect=GatewayTLSConfigurationError(
+                "Invalid TLS configuration: certificate not found"
+            )
+        ),
+    )
+
+    result = await _options_flow(hass, entry).async_step_init(
+        _options_input(
+            use_ssl=True,
+            client_cert="/nonexistent/openclaw-test-client.crt",
+            client_key="/nonexistent/openclaw-test-client.key",
+        )
+    )
+
+    assert result["type"] == "form"
+    assert result["errors"] == {"base": "invalid_mtls_files"}
+    hass.config_entries.async_update_entry.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_validate_connection_with_mtls(monkeypatch) -> None:
+    """Valid mTLS credentials reach the Gateway client."""
+    ssl_helper = MagicMock(return_value=object())
+    monkeypatch.setattr(cf, "create_ssl_context", ssl_helper)
+
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.health = AsyncMock()
+    client.disconnect = AsyncMock()
+
+    client_factory = MagicMock(return_value=client)
+    monkeypatch.setattr(cf, "OpenClawGatewayClient", client_factory)
+
+    result = await cf.validate_connection(
+        MagicMock(),
+        {
+            **GATEWAY,
+            "use_ssl": True,
+            "client_cert": "/tmp/client.crt",
+            "client_key": "/tmp/client.key",
+        },
+    )
+
+    assert result["title"] == "OpenClaw Gateway (gw.local)"
+
+    ssl_helper.assert_called_once_with(
+        "/tmp/client.crt", "/tmp/client.key"
+    )
+
+    kwargs = client_factory.call_args.kwargs
+    assert kwargs["client_cert"] == "/tmp/client.crt"
+    assert kwargs["client_key"] == "/tmp/client.key"
+    assert kwargs["use_ssl"] is True
+
+    client.connect.assert_awaited_once()
+    client.health.assert_awaited_once()
+    client.disconnect.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_session_discovery_uses_mtls(monkeypatch) -> None:
+    """HTTPS session discovery must use the client TLS context."""
+    ssl_context = object()
+    ssl_helper = MagicMock(return_value=ssl_context)
+    monkeypatch.setattr(cf, "create_ssl_context", ssl_helper)
+
+    response = MagicMock()
+    response.status = 200
+    response.json = AsyncMock(
+        return_value={
+            "sessions": [
+                {"sessionKey": "main"},
+                {"session_key": "personal"},
+            ]
+        }
+    )
+
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=response)
+    context.__aexit__ = AsyncMock(return_value=False)
+
+    session = MagicMock()
+    session.get.return_value = context
+
+    monkeypatch.setattr(
+        cf.aiohttp_client,
+        "async_get_clientsession",
+        MagicMock(return_value=session),
+    )
+
+    result = await cf._async_fetch_sessions(
+        MagicMock(),
+        {
+            **GATEWAY,
+            "use_ssl": True,
+            "client_cert": "/tmp/client.crt",
+            "client_key": "/tmp/client.key",
+        },
+    )
+
+    assert result == ["main", "personal"]
+
+    ssl_helper.assert_called_once_with(
+        "/tmp/client.crt", "/tmp/client.key"
+    )
+
+    args, kwargs = session.get.call_args
+    assert args[0] == "https://gw.local:18789/sessions"
+    assert kwargs["ssl"] is ssl_context

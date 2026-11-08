@@ -556,3 +556,45 @@ class TestChallengeHandshake:
         """Without a token, URI has no query params."""
         protocol = GatewayProtocol("localhost", 18789, None)
         assert protocol._uri == "ws://localhost:18789"
+
+@pytest.mark.asyncio
+async def test_invalid_tls_configuration_stops_reconnect(
+    monkeypatch,
+) -> None:
+    """Invalid local TLS configuration must stop without retrying."""
+    error = _exceptions.GatewayTLSConfigurationError(
+        "Invalid TLS configuration: certificate not found"
+    )
+
+    protocol = GatewayProtocol(
+        "localhost",
+        18789,
+        None,
+        use_ssl=True,
+    )
+
+    ssl_context = AsyncMock(side_effect=error)
+    retry_delay = Mock()
+    fatal_callback = Mock()
+
+    monkeypatch.setattr(protocol, "_async_ssl_context", ssl_context)
+    monkeypatch.setattr(protocol, "_retry_delay", retry_delay)
+    monkeypatch.setattr(
+        _gateway,
+        "connect",
+        Mock(side_effect=AssertionError("WebSocket must not connect")),
+    )
+
+    protocol._on_fatal_error = fatal_callback
+
+    await asyncio.wait_for(
+        protocol._connection_loop(),
+        timeout=1,
+    )
+
+    ssl_context.assert_awaited_once()
+    retry_delay.assert_not_called()
+    fatal_callback.assert_called_once_with(error)
+
+    assert protocol._fatal_error is error
+    assert not protocol.connected

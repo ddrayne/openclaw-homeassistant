@@ -15,6 +15,8 @@ from homeassistant.helpers import aiohttp_client, selector
 
 from .const import (
     CONF_AGENT_ID,
+    CONF_CLIENT_CERT,
+    CONF_CLIENT_KEY,
     CONF_BACKGROUND_ENABLED,
     CONF_BACKGROUND_GRACE,
     CONF_HOLDING_PHRASE,
@@ -53,8 +55,10 @@ from .exceptions import (
     DevicePairingRequiredError,
     GatewayAuthenticationError,
     GatewayConnectionError,
+    GatewayTLSConfigurationError,
     GatewayTimeoutError,
 )
+from .gateway import create_ssl_context
 from .gateway_client import OpenClawGatewayClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,16 +90,52 @@ def _entry_title(base_title: str, data: dict[str, Any]) -> str:
     return f"{base_title} — {', '.join(parts)}" if parts else base_title
 
 
+class InvalidMTLSConfiguration(ValueError):
+    """mTLS requires TLS and a complete client certificate/key pair."""
+
+
+def _validate_mtls_settings(data: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Check mTLS settings before attempting any Gateway connection."""
+    cert = (data.get(CONF_CLIENT_CERT) or "").strip()
+    key = (data.get(CONF_CLIENT_KEY) or "").strip()
+    if bool(cert) != bool(key) or (cert and not data.get(CONF_USE_SSL, DEFAULT_USE_SSL)):
+        raise InvalidMTLSConfiguration(
+            "mTLS requires SSL and both client certificate and private key paths"
+        )
+    return cert or None, key or None
+
+
+def _mtls_schema_fields(current: dict[str, Any] | None = None) -> dict:
+    """Optional mTLS paths, clearable in options and reauth forms."""
+    current = current or {}
+    return {
+        vol.Optional(
+            CONF_CLIENT_CERT,
+            description={"suggested_value": current.get(CONF_CLIENT_CERT) or ""},
+        ): str,
+        vol.Optional(
+            CONF_CLIENT_KEY,
+            description={"suggested_value": current.get(CONF_CLIENT_KEY) or ""},
+        ): str,
+    }
+
+
 async def validate_connection(
     hass: HomeAssistant, data: dict[str, Any]
 ) -> dict[str, Any]:
     """Validate the Gateway connection."""
+    cert, key = _validate_mtls_settings(data)
+    if cert and key:
+        # Detect missing, unreadable or mismatched files before opening a socket.
+        await asyncio.to_thread(create_ssl_context, cert, key)
     client = OpenClawGatewayClient(
         hass=hass,
         host=data[CONF_HOST],
         port=data[CONF_PORT],
         token=data.get(CONF_TOKEN),
         use_ssl=data.get(CONF_USE_SSL, DEFAULT_USE_SSL),
+        client_cert=cert,
+        client_key=key,
         timeout=data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
         session_key=data.get(CONF_SESSION_KEY, DEFAULT_SESSION_KEY),
     )
@@ -127,8 +167,15 @@ async def _async_fetch_sessions(
 
     session = aiohttp_client.async_get_clientsession(hass)
     try:
+        cert, key = _validate_mtls_settings(data)
+        ssl_context = None
+        if scheme == "https":
+            ssl_context = await asyncio.to_thread(create_ssl_context, cert, key)
         async with session.get(
-            url, headers=headers, timeout=ClientTimeout(total=10)
+            url,
+            headers=headers,
+            timeout=ClientTimeout(total=10),
+            ssl=ssl_context if ssl_context is not None else True,
         ) as resp:
             if resp.status != 200:
                 _LOGGER.debug(
@@ -276,9 +323,17 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 info = await validate_connection(self.hass, user_input)
+            except InvalidMTLSConfiguration:
+                errors["base"] = "invalid_mtls"
+            except GatewayTLSConfigurationError:
+                errors["base"] = "invalid_mtls_files"
             except DevicePairingRequiredError:
                 _LOGGER.info("Device pairing required — showing approval step")
-                self._config_data = user_input
+                self._config_data = {
+                    **user_input,
+                    CONF_CLIENT_CERT: user_input.get(CONF_CLIENT_CERT) or None,
+                    CONF_CLIENT_KEY: user_input.get(CONF_CLIENT_KEY) or None,
+                }
                 self._config_title = (
                     f"OpenClaw Gateway ({user_input[CONF_HOST]})"
                 )
@@ -294,7 +349,11 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                self._config_data = user_input
+                self._config_data = {
+                    **user_input,
+                    CONF_CLIENT_CERT: user_input.get(CONF_CLIENT_CERT) or None,
+                    CONF_CLIENT_KEY: user_input.get(CONF_CLIENT_KEY) or None,
+                }
                 self._config_title = info["title"]
                 return await self.async_step_session()
 
@@ -309,6 +368,7 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_USE_SSL, default=DEFAULT_USE_SSL
                 ): bool,
+                **_mtls_schema_fields(),
                 vol.Optional(
                     CONF_TIMEOUT, default=DEFAULT_TIMEOUT
                 ): vol.All(int, vol.Range(min=5, max=600)),
@@ -331,6 +391,10 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 info = await validate_connection(
                     self.hass, self._config_data
                 )
+            except InvalidMTLSConfiguration:
+                errors["base"] = "invalid_mtls"
+            except GatewayTLSConfigurationError:
+                errors["base"] = "invalid_mtls_files"
             except DevicePairingRequiredError:
                 errors["base"] = "pairing_not_approved"
             except GatewayAuthenticationError as err:
@@ -427,8 +491,15 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             # Merge existing data with new user input for validation
             test_data = {**existing, **user_input}
+            for field in (CONF_CLIENT_CERT, CONF_CLIENT_KEY):
+                if field in user_input:
+                    test_data[field] = user_input[field] or None
             try:
                 await validate_connection(self.hass, test_data)
+            except InvalidMTLSConfiguration:
+                errors["base"] = "invalid_mtls"
+            except GatewayTLSConfigurationError:
+                errors["base"] = "invalid_mtls_files"
             except DevicePairingRequiredError:
                 _LOGGER.info("Device pairing required during reauth")
                 errors["base"] = "pairing_required"
@@ -445,8 +516,12 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 self.hass.config_entries.async_update_entry(
                     self._reauth_entry,
-                    data={**self._reauth_entry.data, **user_input},
-                    options={**self._reauth_entry.options, **user_input},
+                    data={**self._reauth_entry.data, **{
+                        k: test_data[k] for k in user_input
+                    }},
+                    options={**self._reauth_entry.options, **{
+                        k: test_data[k] for k in user_input
+                    }},
                 )
                 await self.hass.config_entries.async_reload(
                     self._reauth_entry.entry_id
@@ -468,6 +543,7 @@ class OpenClawConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_USE_SSL,
                     default=existing.get(CONF_USE_SSL, DEFAULT_USE_SSL),
                 ): bool,
+                **_mtls_schema_fields(existing),
             }
         )
 
@@ -509,6 +585,10 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
             try:
                 # Validate new settings
                 await validate_connection(self.hass, user_input)
+            except InvalidMTLSConfiguration:
+                errors["base"] = "invalid_mtls"
+            except GatewayTLSConfigurationError:
+                errors["base"] = "invalid_mtls_files"
             except DevicePairingRequiredError:
                 _LOGGER.info("Device pairing required during options update")
                 errors["base"] = "pairing_required"
@@ -528,9 +608,13 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                     errors["base"] = "already_configured"
                     return await self._async_show_options_form(errors)
                 data = dict(user_input)
+                data[CONF_CLIENT_CERT] = user_input.get(CONF_CLIENT_CERT) or None
+                data[CONF_CLIENT_KEY] = user_input.get(CONF_CLIENT_KEY) or None
                 options = {
                     CONF_TOKEN: user_input.get(CONF_TOKEN),
                     CONF_USE_SSL: user_input.get(CONF_USE_SSL, DEFAULT_USE_SSL),
+                    CONF_CLIENT_CERT: user_input.get(CONF_CLIENT_CERT) or None,
+                    CONF_CLIENT_KEY: user_input.get(CONF_CLIENT_KEY) or None,
                     CONF_TIMEOUT: user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
                     CONF_SESSION_KEY: user_input.get(
                         CONF_SESSION_KEY, DEFAULT_SESSION_KEY
@@ -592,6 +676,7 @@ class OpenClawOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_USE_SSL,
                     default=current.get(CONF_USE_SSL, DEFAULT_USE_SSL),
                 ): bool,
+                **_mtls_schema_fields(current),
                 vol.Optional(
                     CONF_TIMEOUT,
                     default=current.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
