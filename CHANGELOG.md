@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **New icon.** The integration now uses the Claw House symbol, a claw around
+  a house, in blue on light themes and white on dark themes. It replaces the
+  lobster illustration.
+
 ## 1.10.0 — 2026-11-14
 
 Stable release of everything in the three betas below. There are no code
