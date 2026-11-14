@@ -582,8 +582,10 @@ If the gateway sits behind a proxy that requires a client certificate, set
 later under **Configure**). Both are needed, together with **Use SSL**.
 
 - The paths are read by Home Assistant, so the files must be somewhere it can
-  reach — for example `/config/ssl/openclaw-client.crt` and
-  `/config/ssl/openclaw-client.key`.
+  reach. The usual place is Home Assistant's `/ssl` folder — for example
+  `/ssl/openclaw-client.crt` and `/ssl/openclaw-client.key`. If your install
+  has no `/ssl` folder (some container setups), any path Home Assistant can
+  read works, such as a folder under `/config`.
 - Both files are PEM. The private key must **not** be passphrase-protected.
 - The files are checked when you save: a missing file, or a certificate and key
   that don't match, is reported in the form instead of failing later.
