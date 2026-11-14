@@ -57,6 +57,10 @@ def create_ssl_context(
             context.load_cert_chain(
                 certfile=client_cert,
                 keyfile=client_key,
+                # Without a password argument OpenSSL prompts on the
+                # terminal for an encrypted key, which can hang Home
+                # Assistant. An empty answer makes it fail cleanly instead.
+                password=lambda: "",
             )
 
         return context

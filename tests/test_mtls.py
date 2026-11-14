@@ -130,3 +130,21 @@ async def test_websocket_ssl_context_loads_client_credentials(monkeypatch):
         "/tmp/client.crt",
         "/tmp/client.key",
     )
+
+
+def test_encrypted_private_key_fails_instead_of_prompting(tmp_path: Path) -> None:
+    """A passphrase-protected key must be an error, never a terminal prompt."""
+    cert, key = _new_cert_and_key(tmp_path, "client")
+    encrypted = tmp_path / "encrypted.key"
+    subprocess.run(
+        [
+            "openssl", "pkey", "-in", str(key), "-out", str(encrypted),
+            "-aes256", "-passout", "pass:secret",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    with pytest.raises(GatewayTLSConfigurationError):
+        create_ssl_context(str(cert), str(encrypted))
