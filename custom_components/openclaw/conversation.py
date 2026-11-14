@@ -85,18 +85,30 @@ def trim_tts_text(text: str, max_chars: int) -> str:
     return text[: max_chars - 3].rstrip() + "..."
 
 
+# "?" as written in Latin scripts, Chinese/Japanese (full-width) and Arabic.
+_QUESTION_MARKS = ("?", "\uFF1F", "\u061F")
+
+
 def response_expects_followup(text: str) -> bool:
     """Return True if the response looks like it asks a follow-up question.
 
     Keeps the satellite mic open so the user can reply without re-triggering
-    the wake word. We treat any "?" in the reply as a follow-up cue.
+    the wake word. We treat any question mark in the reply as a follow-up cue,
+    including the full-width one used in Chinese and Japanese and the Arabic
+    one.
     """
-    return "?" in (text or "")
+    return any(mark in (text or "") for mark in _QUESTION_MARKS)
 
 
-# A sentence end: terminal punctuation, optionally followed by closing quotes
-# or brackets, then whitespace or the end of the text.
-_SENTENCE_END = re.compile(r"[.!?\u2026][\"'\u201d\u2019)\]]*(?=\s|$)")
+# A sentence end. Western punctuation counts only when followed by whitespace
+# or the end of the text, so the dot in "1.9" is not an end. Chinese and
+# Japanese punctuation (\u3002 \uFF01 \uFF1F), the Devanagari danda and the
+# Arabic question mark are not followed by a space, so they count wherever
+# they appear. Closing quotes or brackets may follow either kind.
+_CLOSERS = "[\"'\u201d\u2019)\\]\u300d\u300f\uff09]*"
+_SENTENCE_END = re.compile(
+    rf"[.!?\u2026]{_CLOSERS}(?=\s|$)|[\u3002\uFF01\uFF1F\u0964\u061F]{_CLOSERS}"
+)
 
 
 def _holding_line(said: str, fallback: str) -> str:
