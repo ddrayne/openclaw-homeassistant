@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Anslut till OpenClaw Gateway",
+        "description": "Konfigurera anslutningen till din OpenClaw Gateway",
+        "data": {
+          "host": "Värd",
+          "port": "Port",
+          "token": "Gateway-token",
+          "use_ssl": "Använd SSL (wss://)",
+          "client_cert": "Sökväg till klientcertifikat (valfritt, mTLS)",
+          "client_key": "Sökväg till klientens privata nyckel (valfritt, mTLS)",
+          "timeout": "Tidsgräns för agenten (sekunder)"
+        }
+      },
+      "pairing": {
+        "title": "Enheten måste godkännas",
+        "description": "En ny enhet har registrerats hos din OpenClaw Gateway och måste godkännas innan den kan ansluta.\n\nGodkänn den i OpenClaw CLI eller Control UI och klicka sedan på Skicka för att fortsätta.\n\nOm din OpenClaw-instans körs på samma dator (localhost) bör godkännandet ske automatiskt."
+      },
+      "session": {
+        "title": "Session och tal",
+        "description": "Välj session och talalternativ",
+        "data": {
+          "session_key": "Sessionsnyckel (standard: main)",
+          "agent_id": "Agent (valfritt, lämna tomt för standardagenten)",
+          "model": "Annan modell (valfritt)",
+          "thinking": "Annat tänkläge (valfritt)",
+          "strip_emojis": "Ta bort emojier från talet",
+          "tts_max_chars": "Högsta antal tecken i talet (0 = ingen gräns)",
+          "proactive_enabled": "Proaktiv röst: låt agenten tala på eget initiativ (meddelanden, påminnelser, uppföljningar)",
+          "proactive_satellite": "Satellit att tala på (assist_satellite-entitet)",
+          "proactive_mode": "Proaktivt läge: announce, eller start_conversation för att även öppna mikrofonen"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Autentisera OpenClaw Gateway igen",
+        "description": "Gateway-token är inte längre giltig. Uppdatera dina anslutningsinställningar.",
+        "data": {
+          "host": "Värd",
+          "port": "Port",
+          "token": "Gateway-token",
+          "use_ssl": "Använd SSL (wss://)",
+          "client_cert": "Sökväg till klientcertifikat (valfritt, mTLS)",
+          "client_key": "Sökväg till klientens privata nyckel (valfritt, mTLS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Det gick inte att ansluta till Gateway",
+      "invalid_auth": "Autentiseringen misslyckades: ogiltig token",
+      "pairing_not_approved": "Enheten är ännu inte godkänd i OpenClaw. Godkänn den och försök igen.",
+      "pairing_required": "Enheten måste godkännas. Godkänn den här enheten i OpenClaw och försök igen.",
+      "timeout": "Anslutningen tog för lång tid",
+      "invalid_mtls": "mTLS kräver SSL samt sökvägar till både klientcertifikat och privat nyckel",
+      "invalid_mtls_files": "Det går inte att läsa in klientcertifikatet eller den privata nyckeln. Kontrollera sökvägar, behörigheter och att certifikat och nyckel hör ihop.",
+      "unknown": "Ett oväntat fel uppstod"
+    },
+    "abort": {
+      "already_configured": "Den här Gateway är redan konfigurerad för den här agenten och sessionen",
+      "reauth_successful": "Autentiseringen har förnyats"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Alternativ för OpenClaw Gateway",
+        "description": "Uppdatera anslutningsinställningarna för Gateway",
+        "data": {
+          "host": "Värd",
+          "port": "Port",
+          "token": "Gateway-token",
+          "use_ssl": "Använd SSL (wss://)",
+          "client_cert": "Sökväg till klientcertifikat (valfritt, mTLS)",
+          "client_key": "Sökväg till klientens privata nyckel (valfritt, mTLS)",
+          "timeout": "Tidsgräns för agenten (sekunder)",
+          "session_key": "Sessionsnyckel (standard: main)",
+          "agent_id": "Agent (valfritt, lämna tomt för standardagenten)",
+          "model": "Annan modell (valfritt)",
+          "thinking": "Annat tänkläge (valfritt)",
+          "strip_emojis": "Ta bort emojier från talet",
+          "tts_max_chars": "Högsta antal tecken i talet (0 = ingen gräns)",
+          "streaming_enabled": "Strömma svar så att talet börjar tidigare (experimentellt; kräver att högsta antal tecken är 0)",
+          "background_enabled": "Bakgrundsarbete: besvara långsamma förfrågningar med ett senare meddelande i stället för att tidsgränsen går ut",
+          "background_grace": "Väntetid (sekunder av tystnad innan förfrågan flyttas till bakgrunden)",
+          "holding_phrase": "Väntefras som sägs när en förfrågan skjuts upp innan agenten har sagt en hel mening",
+          "proactive_enabled": "Proaktiv röst: låt agenten tala på eget initiativ (meddelanden, påminnelser, uppföljningar)",
+          "proactive_satellite": "Satellit att tala på (assist_satellite-entitet)",
+          "proactive_mode": "Proaktivt läge: announce, eller start_conversation för att även öppna mikrofonen"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "En annan OpenClaw-post använder redan den här Gateway med samma agent och session",
+      "cannot_connect": "Det gick inte att ansluta till Gateway",
+      "invalid_auth": "Autentiseringen misslyckades: ogiltig token",
+      "pairing_required": "Enheten måste godkännas. Godkänn den här enheten i OpenClaw och försök igen.",
+      "timeout": "Anslutningen tog för lång tid",
+      "invalid_mtls": "mTLS kräver SSL samt sökvägar till både klientcertifikat och privat nyckel",
+      "invalid_mtls_files": "Det går inte att läsa in klientcertifikatet eller den privata nyckeln. Kontrollera sökvägar, behörigheter och att certifikat och nyckel hör ihop.",
+      "unknown": "Ett oväntat fel uppstod"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Autentiseringen mot Gateway misslyckades",
+      "description": "Token för OpenClaw Gateway är inte längre giltig. Uppdatera den under Inställningar > Enheter och tjänster > OpenClaw > Konfigurera."
+    },
+    "device_pairing_required": {
+      "title": "Enheten måste godkännas",
+      "description": "Den här Home Assistant-enheten måste godkännas i OpenClaw innan den kan ansluta. Godkänn den med OpenClaw CLI eller Control UI och ladda sedan om integrationen."
+    }
+  }
+}

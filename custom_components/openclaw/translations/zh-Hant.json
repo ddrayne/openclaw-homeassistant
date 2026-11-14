@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "連線到 OpenClaw Gateway",
+        "description": "設定與 OpenClaw Gateway 的連線",
+        "data": {
+          "host": "主機",
+          "port": "連接埠",
+          "token": "Gateway 權杖",
+          "use_ssl": "使用 SSL (wss://)",
+          "client_cert": "用戶端憑證路徑（選填，mTLS）",
+          "client_key": "用戶端私密金鑰路徑（選填，mTLS）",
+          "timeout": "代理程式逾時時間（秒）"
+        }
+      },
+      "pairing": {
+        "title": "需要核准裝置",
+        "description": "已有一台新裝置在你的 OpenClaw Gateway 上註冊，需要先核准才能連線。\n\n請在 OpenClaw 命令列或 Control UI 中核准，然後點選「提交」繼續。\n\n如果 OpenClaw 執行在同一台機器上（localhost），通常會自動核准。"
+      },
+      "session": {
+        "title": "工作階段與語音",
+        "description": "選擇工作階段和語音選項",
+        "data": {
+          "session_key": "工作階段金鑰（預設：main）",
+          "agent_id": "代理程式（選填，留空則使用預設代理程式）",
+          "model": "覆寫模型（選填）",
+          "thinking": "覆寫思考模式（選填）",
+          "strip_emojis": "從語音播報中移除表情符號",
+          "tts_max_chars": "語音播報最大字元數（0 = 不限制）",
+          "proactive_enabled": "主動語音：允許代理程式主動說話（通知、提醒、後續追蹤）",
+          "proactive_satellite": "用於播報的語音衛星（assist_satellite 實體）",
+          "proactive_mode": "主動模式：announce，或使用 start_conversation 同時開啟麥克風"
+        }
+      },
+      "reauth_confirm": {
+        "title": "重新驗證 OpenClaw Gateway",
+        "description": "Gateway 權杖已失效，請更新連線設定。",
+        "data": {
+          "host": "主機",
+          "port": "連接埠",
+          "token": "Gateway 權杖",
+          "use_ssl": "使用 SSL (wss://)",
+          "client_cert": "用戶端憑證路徑（選填，mTLS）",
+          "client_key": "用戶端私密金鑰路徑（選填，mTLS）"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "無法連線到 Gateway",
+      "invalid_auth": "驗證失敗：權杖無效",
+      "pairing_not_approved": "裝置尚未在 OpenClaw 中獲得核准。請核准後再試一次。",
+      "pairing_required": "需要核准裝置。請在 OpenClaw 中核准此裝置，然後再試一次。",
+      "timeout": "連線逾時",
+      "invalid_mtls": "mTLS 需要啟用 SSL，並同時提供用戶端憑證和私密金鑰的路徑",
+      "invalid_mtls_files": "無法載入用戶端憑證或私密金鑰。請檢查檔案路徑、權限以及憑證與金鑰是否相符。",
+      "unknown": "發生未預期的錯誤"
+    },
+    "abort": {
+      "already_configured": "此 Gateway 已為該代理程式和工作階段設定過",
+      "reauth_successful": "重新驗證成功"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenClaw Gateway 選項",
+        "description": "更新 Gateway 連線設定",
+        "data": {
+          "host": "主機",
+          "port": "連接埠",
+          "token": "Gateway 權杖",
+          "use_ssl": "使用 SSL (wss://)",
+          "client_cert": "用戶端憑證路徑（選填，mTLS）",
+          "client_key": "用戶端私密金鑰路徑（選填，mTLS）",
+          "timeout": "代理程式逾時時間（秒）",
+          "session_key": "工作階段金鑰（預設：main）",
+          "agent_id": "代理程式（選填，留空則使用預設代理程式）",
+          "model": "覆寫模型（選填）",
+          "thinking": "覆寫思考模式（選填）",
+          "strip_emojis": "從語音播報中移除表情符號",
+          "tts_max_chars": "語音播報最大字元數（0 = 不限制）",
+          "streaming_enabled": "串流輸出回覆，讓語音更早開始（實驗性功能；需要將最大字元數設為 0）",
+          "background_enabled": "背景處理：對耗時較長的請求稍後透過播報回覆，而不是逾時",
+          "background_grace": "寬限時間（轉入背景前保持靜默的秒數）",
+          "holding_phrase": "等待提示語：在代理程式說完一個完整句子之前請求被轉入背景時播報",
+          "proactive_enabled": "主動語音：允許代理程式主動說話（通知、提醒、後續追蹤）",
+          "proactive_satellite": "用於播報的語音衛星（assist_satellite 實體）",
+          "proactive_mode": "主動模式：announce，或使用 start_conversation 同時開啟麥克風"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "另一個 OpenClaw 項目已使用相同的代理程式和工作階段連線此 Gateway",
+      "cannot_connect": "無法連線到 Gateway",
+      "invalid_auth": "驗證失敗：權杖無效",
+      "pairing_required": "需要核准裝置。請在 OpenClaw 中核准此裝置，然後再試一次。",
+      "timeout": "連線逾時",
+      "invalid_mtls": "mTLS 需要啟用 SSL，並同時提供用戶端憑證和私密金鑰的路徑",
+      "invalid_mtls_files": "無法載入用戶端憑證或私密金鑰。請檢查檔案路徑、權限以及憑證與金鑰是否相符。",
+      "unknown": "發生未預期的錯誤"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Gateway 驗證失敗",
+      "description": "OpenClaw Gateway 權杖已失效。請在 設定 > 裝置與服務 > OpenClaw > 設定 中更新權杖。"
+    },
+    "device_pairing_required": {
+      "title": "需要核准裝置",
+      "description": "此 Home Assistant 裝置需要先在 OpenClaw 中獲得核准才能連線。請使用 OpenClaw 命令列或 Control UI 核准，然後重新載入整合。"
+    }
+  }
+}

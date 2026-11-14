@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit OpenClaw Gateway verbinden",
+        "description": "Verbindung zu deinem OpenClaw Gateway einrichten",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Gateway-Token",
+          "use_ssl": "SSL verwenden (wss://)",
+          "client_cert": "Pfad zum Client-Zertifikat (optional, mTLS)",
+          "client_key": "Pfad zum privaten Client-Schlüssel (optional, mTLS)",
+          "timeout": "Agent-Zeitlimit (Sekunden)"
+        }
+      },
+      "pairing": {
+        "title": "Gerätefreigabe erforderlich",
+        "description": "Ein neues Gerät wurde bei deinem OpenClaw Gateway registriert und muss freigegeben werden, bevor es sich verbinden kann.\n\nBitte gib es in der OpenClaw-CLI oder der Control UI frei und klicke dann auf Absenden, um fortzufahren.\n\nWenn deine OpenClaw-Instanz auf demselben Rechner läuft (localhost), sollte die Freigabe automatisch erfolgen."
+      },
+      "session": {
+        "title": "Sitzung und Sprache",
+        "description": "Sitzung und Sprachoptionen auswählen",
+        "data": {
+          "session_key": "Sitzungsschlüssel (Standard: main)",
+          "agent_id": "Agent (optional, für den Standard leer lassen)",
+          "model": "Modell überschreiben (optional)",
+          "thinking": "Denkmodus überschreiben (optional)",
+          "strip_emojis": "Emojis aus der Sprachausgabe entfernen",
+          "tts_max_chars": "Maximale Zeichenzahl der Sprachausgabe (0 = unbegrenzt)",
+          "proactive_enabled": "Proaktive Sprache: Der Agent darf von sich aus sprechen (Ansagen, Erinnerungen, Rückfragen)",
+          "proactive_satellite": "Satellit für die Sprachausgabe (assist_satellite-Entität)",
+          "proactive_mode": "Proaktiver Modus: announce, oder start_conversation, um zusätzlich das Mikrofon zu öffnen"
+        }
+      },
+      "reauth_confirm": {
+        "title": "OpenClaw Gateway erneut authentifizieren",
+        "description": "Das Gateway-Token ist nicht mehr gültig. Bitte aktualisiere deine Verbindungseinstellungen.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Gateway-Token",
+          "use_ssl": "SSL verwenden (wss://)",
+          "client_cert": "Pfad zum Client-Zertifikat (optional, mTLS)",
+          "client_key": "Pfad zum privaten Client-Schlüssel (optional, mTLS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Gateway fehlgeschlagen",
+      "invalid_auth": "Authentifizierung fehlgeschlagen – ungültiges Token",
+      "pairing_not_approved": "Das Gerät ist in OpenClaw noch nicht freigegeben. Gib es frei und versuche es erneut.",
+      "pairing_required": "Gerätefreigabe erforderlich. Gib dieses Gerät in OpenClaw frei und versuche es erneut.",
+      "timeout": "Zeitüberschreitung der Verbindung",
+      "invalid_mtls": "mTLS erfordert SSL sowie die Pfade zu Client-Zertifikat und privatem Schlüssel",
+      "invalid_mtls_files": "Client-Zertifikat oder privater Schlüssel konnte nicht geladen werden. Prüfe Dateipfade, Berechtigungen und ob Zertifikat und Schlüssel zusammenpassen.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten"
+    },
+    "abort": {
+      "already_configured": "Dieses Gateway ist für diesen Agenten und diese Sitzung bereits eingerichtet",
+      "reauth_successful": "Erneute Authentifizierung erfolgreich"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenClaw Gateway – Optionen",
+        "description": "Verbindungseinstellungen des Gateways ändern",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Gateway-Token",
+          "use_ssl": "SSL verwenden (wss://)",
+          "client_cert": "Pfad zum Client-Zertifikat (optional, mTLS)",
+          "client_key": "Pfad zum privaten Client-Schlüssel (optional, mTLS)",
+          "timeout": "Agent-Zeitlimit (Sekunden)",
+          "session_key": "Sitzungsschlüssel (Standard: main)",
+          "agent_id": "Agent (optional, für den Standard leer lassen)",
+          "model": "Modell überschreiben (optional)",
+          "thinking": "Denkmodus überschreiben (optional)",
+          "strip_emojis": "Emojis aus der Sprachausgabe entfernen",
+          "tts_max_chars": "Maximale Zeichenzahl der Sprachausgabe (0 = unbegrenzt)",
+          "streaming_enabled": "Antworten streamen, damit die Sprachausgabe früher beginnt (experimentell; erfordert maximale Zeichenzahl 0)",
+          "background_enabled": "Hintergrundarbeit: Langsame Anfragen später per Ansage beantworten, statt abzubrechen",
+          "background_grace": "Wartezeit (Sekunden Stille, bevor in den Hintergrund verschoben wird)",
+          "holding_phrase": "Überbrückungssatz, der gesprochen wird, wenn eine Anfrage verschoben wird, bevor der Agent einen vollständigen Satz gesagt hat",
+          "proactive_enabled": "Proaktive Sprache: Der Agent darf von sich aus sprechen (Ansagen, Erinnerungen, Rückfragen)",
+          "proactive_satellite": "Satellit für die Sprachausgabe (assist_satellite-Entität)",
+          "proactive_mode": "Proaktiver Modus: announce, oder start_conversation, um zusätzlich das Mikrofon zu öffnen"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "Ein anderer OpenClaw-Eintrag verwendet dieses Gateway bereits mit demselben Agenten und derselben Sitzung",
+      "cannot_connect": "Verbindung zum Gateway fehlgeschlagen",
+      "invalid_auth": "Authentifizierung fehlgeschlagen – ungültiges Token",
+      "pairing_required": "Gerätefreigabe erforderlich. Gib dieses Gerät in OpenClaw frei und versuche es erneut.",
+      "timeout": "Zeitüberschreitung der Verbindung",
+      "invalid_mtls": "mTLS erfordert SSL sowie die Pfade zu Client-Zertifikat und privatem Schlüssel",
+      "invalid_mtls_files": "Client-Zertifikat oder privater Schlüssel konnte nicht geladen werden. Prüfe Dateipfade, Berechtigungen und ob Zertifikat und Schlüssel zusammenpassen.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Gateway-Authentifizierung fehlgeschlagen",
+      "description": "Das Token des OpenClaw Gateways ist nicht mehr gültig. Aktualisiere es unter Einstellungen > Geräte & Dienste > OpenClaw > Konfigurieren."
+    },
+    "device_pairing_required": {
+      "title": "Gerätefreigabe erforderlich",
+      "description": "Dieses Gerät von Home Assistant muss in OpenClaw freigegeben werden, bevor es sich verbinden kann. Gib es über die OpenClaw-CLI oder die Control UI frei und lade dann die Integration neu."
+    }
+  }
+}

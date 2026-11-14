@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbinden met OpenClaw Gateway",
+        "description": "Stel de verbinding met je OpenClaw Gateway in",
+        "data": {
+          "host": "Host",
+          "port": "Poort",
+          "token": "Gateway-token",
+          "use_ssl": "SSL gebruiken (wss://)",
+          "client_cert": "Pad naar clientcertificaat (optioneel, mTLS)",
+          "client_key": "Pad naar privésleutel van de client (optioneel, mTLS)",
+          "timeout": "Time-out van de agent (seconden)"
+        }
+      },
+      "pairing": {
+        "title": "Apparaatgoedkeuring vereist",
+        "description": "Er is een nieuw apparaat geregistreerd bij je OpenClaw Gateway. Het moet worden goedgekeurd voordat het verbinding kan maken.\n\nKeur het goed in de OpenClaw-CLI of de Control UI en klik daarna op Verzenden om door te gaan.\n\nAls je OpenClaw-instantie op dezelfde machine draait (localhost), gebeurt de goedkeuring normaal gesproken automatisch."
+      },
+      "session": {
+        "title": "Sessie en spraak",
+        "description": "Kies een sessie en spraakopties",
+        "data": {
+          "session_key": "Sessiesleutel (standaard: main)",
+          "agent_id": "Agent (optioneel, laat leeg voor de standaardagent)",
+          "model": "Ander model (optioneel)",
+          "thinking": "Andere denkmodus (optioneel)",
+          "strip_emojis": "Emoji's uit de spraakuitvoer verwijderen",
+          "tts_max_chars": "Maximaal aantal tekens voor spraakuitvoer (0 = geen limiet)",
+          "proactive_enabled": "Proactieve spraak: laat de agent uit zichzelf spreken (meldingen, herinneringen, vervolgvragen)",
+          "proactive_satellite": "Satelliet om op te spreken (assist_satellite-entiteit)",
+          "proactive_mode": "Proactieve modus: announce, of start_conversation om ook de microfoon te openen"
+        }
+      },
+      "reauth_confirm": {
+        "title": "OpenClaw Gateway opnieuw verifiëren",
+        "description": "Het gateway-token is niet meer geldig. Werk je verbindingsinstellingen bij.",
+        "data": {
+          "host": "Host",
+          "port": "Poort",
+          "token": "Gateway-token",
+          "use_ssl": "SSL gebruiken (wss://)",
+          "client_cert": "Pad naar clientcertificaat (optioneel, mTLS)",
+          "client_key": "Pad naar privésleutel van de client (optioneel, mTLS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbinden met de Gateway is mislukt",
+      "invalid_auth": "Verificatie mislukt: ongeldig token",
+      "pairing_not_approved": "Het apparaat is nog niet goedgekeurd in OpenClaw. Keur het goed en probeer het opnieuw.",
+      "pairing_required": "Apparaatgoedkeuring vereist. Keur dit apparaat goed in OpenClaw en probeer het opnieuw.",
+      "timeout": "Time-out van de verbinding",
+      "invalid_mtls": "mTLS vereist SSL en de paden naar zowel het clientcertificaat als de privésleutel",
+      "invalid_mtls_files": "Kan het clientcertificaat of de privésleutel niet laden. Controleer de bestandspaden, de rechten en of certificaat en sleutel bij elkaar horen.",
+      "unknown": "Er is een onverwachte fout opgetreden"
+    },
+    "abort": {
+      "already_configured": "Deze Gateway is al ingesteld voor deze agent en sessie",
+      "reauth_successful": "Opnieuw verifiëren gelukt"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opties voor OpenClaw Gateway",
+        "description": "Verbindingsinstellingen van de Gateway bijwerken",
+        "data": {
+          "host": "Host",
+          "port": "Poort",
+          "token": "Gateway-token",
+          "use_ssl": "SSL gebruiken (wss://)",
+          "client_cert": "Pad naar clientcertificaat (optioneel, mTLS)",
+          "client_key": "Pad naar privésleutel van de client (optioneel, mTLS)",
+          "timeout": "Time-out van de agent (seconden)",
+          "session_key": "Sessiesleutel (standaard: main)",
+          "agent_id": "Agent (optioneel, laat leeg voor de standaardagent)",
+          "model": "Ander model (optioneel)",
+          "thinking": "Andere denkmodus (optioneel)",
+          "strip_emojis": "Emoji's uit de spraakuitvoer verwijderen",
+          "tts_max_chars": "Maximaal aantal tekens voor spraakuitvoer (0 = geen limiet)",
+          "streaming_enabled": "Antwoorden streamen zodat de spraak eerder begint (experimenteel; vereist maximaal aantal tekens op 0)",
+          "background_enabled": "Achtergrondwerk: beantwoord trage verzoeken later met een melding in plaats van een time-out",
+          "background_grace": "Wachttijd (seconden stilte voordat naar de achtergrond wordt verplaatst)",
+          "holding_phrase": "Overbruggingszin, uitgesproken wanneer een verzoek wordt uitgesteld voordat de agent een volledige zin heeft gezegd",
+          "proactive_enabled": "Proactieve spraak: laat de agent uit zichzelf spreken (meldingen, herinneringen, vervolgvragen)",
+          "proactive_satellite": "Satelliet om op te spreken (assist_satellite-entiteit)",
+          "proactive_mode": "Proactieve modus: announce, of start_conversation om ook de microfoon te openen"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "Een andere OpenClaw-vermelding gebruikt deze Gateway al met dezelfde agent en sessie",
+      "cannot_connect": "Verbinden met de Gateway is mislukt",
+      "invalid_auth": "Verificatie mislukt: ongeldig token",
+      "pairing_required": "Apparaatgoedkeuring vereist. Keur dit apparaat goed in OpenClaw en probeer het opnieuw.",
+      "timeout": "Time-out van de verbinding",
+      "invalid_mtls": "mTLS vereist SSL en de paden naar zowel het clientcertificaat als de privésleutel",
+      "invalid_mtls_files": "Kan het clientcertificaat of de privésleutel niet laden. Controleer de bestandspaden, de rechten en of certificaat en sleutel bij elkaar horen.",
+      "unknown": "Er is een onverwachte fout opgetreden"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Verificatie bij de Gateway mislukt",
+      "description": "Het token van OpenClaw Gateway is niet meer geldig. Werk het bij via Instellingen > Apparaten & diensten > OpenClaw > Configureren."
+    },
+    "device_pairing_required": {
+      "title": "Apparaatgoedkeuring vereist",
+      "description": "Dit Home Assistant-apparaat moet in OpenClaw worden goedgekeurd voordat het verbinding kan maken. Keur het goed met de OpenClaw-CLI of de Control UI en laad daarna de integratie opnieuw."
+    }
+  }
+}

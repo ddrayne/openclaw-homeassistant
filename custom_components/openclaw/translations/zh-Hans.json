@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "连接到 OpenClaw Gateway",
+        "description": "配置与 OpenClaw Gateway 的连接",
+        "data": {
+          "host": "主机",
+          "port": "端口",
+          "token": "Gateway 令牌",
+          "use_ssl": "使用 SSL (wss://)",
+          "client_cert": "客户端证书路径（可选，mTLS）",
+          "client_key": "客户端私钥路径（可选，mTLS）",
+          "timeout": "智能体超时时间（秒）"
+        }
+      },
+      "pairing": {
+        "title": "需要批准设备",
+        "description": "已有一台新设备在你的 OpenClaw Gateway 上注册，需要先批准才能连接。\n\n请在 OpenClaw 命令行或 Control UI 中批准，然后点击“提交”继续。\n\n如果 OpenClaw 运行在同一台机器上（localhost），通常会自动批准。"
+      },
+      "session": {
+        "title": "会话与语音",
+        "description": "选择会话和语音选项",
+        "data": {
+          "session_key": "会话键（默认：main）",
+          "agent_id": "智能体（可选，留空则使用默认智能体）",
+          "model": "覆盖模型（可选）",
+          "thinking": "覆盖思考模式（可选）",
+          "strip_emojis": "从语音播报中去除表情符号",
+          "tts_max_chars": "语音播报最大字符数（0 = 不限制）",
+          "proactive_enabled": "主动语音：允许智能体主动说话（通知、提醒、后续跟进）",
+          "proactive_satellite": "用于播报的语音卫星（assist_satellite 实体）",
+          "proactive_mode": "主动模式：announce，或使用 start_conversation 同时打开麦克风"
+        }
+      },
+      "reauth_confirm": {
+        "title": "重新验证 OpenClaw Gateway",
+        "description": "Gateway 令牌已失效，请更新连接设置。",
+        "data": {
+          "host": "主机",
+          "port": "端口",
+          "token": "Gateway 令牌",
+          "use_ssl": "使用 SSL (wss://)",
+          "client_cert": "客户端证书路径（可选，mTLS）",
+          "client_key": "客户端私钥路径（可选，mTLS）"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到 Gateway",
+      "invalid_auth": "身份验证失败：令牌无效",
+      "pairing_not_approved": "设备尚未在 OpenClaw 中获得批准。请批准后重试。",
+      "pairing_required": "需要批准设备。请在 OpenClaw 中批准此设备，然后重试。",
+      "timeout": "连接超时",
+      "invalid_mtls": "mTLS 需要启用 SSL，并同时提供客户端证书和私钥的路径",
+      "invalid_mtls_files": "无法加载客户端证书或私钥。请检查文件路径、权限以及证书与私钥是否匹配。",
+      "unknown": "发生意外错误"
+    },
+    "abort": {
+      "already_configured": "此 Gateway 已为该智能体和会话配置过",
+      "reauth_successful": "重新验证成功"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenClaw Gateway 选项",
+        "description": "更新 Gateway 连接设置",
+        "data": {
+          "host": "主机",
+          "port": "端口",
+          "token": "Gateway 令牌",
+          "use_ssl": "使用 SSL (wss://)",
+          "client_cert": "客户端证书路径（可选，mTLS）",
+          "client_key": "客户端私钥路径（可选，mTLS）",
+          "timeout": "智能体超时时间（秒）",
+          "session_key": "会话键（默认：main）",
+          "agent_id": "智能体（可选，留空则使用默认智能体）",
+          "model": "覆盖模型（可选）",
+          "thinking": "覆盖思考模式（可选）",
+          "strip_emojis": "从语音播报中去除表情符号",
+          "tts_max_chars": "语音播报最大字符数（0 = 不限制）",
+          "streaming_enabled": "流式输出回复，让语音更早开始（实验性功能；需要将最大字符数设为 0）",
+          "background_enabled": "后台处理：对耗时较长的请求稍后通过播报回复，而不是超时",
+          "background_grace": "宽限时间（转入后台前保持静默的秒数）",
+          "holding_phrase": "等待提示语：在智能体说完一个完整句子之前请求被转入后台时播报",
+          "proactive_enabled": "主动语音：允许智能体主动说话（通知、提醒、后续跟进）",
+          "proactive_satellite": "用于播报的语音卫星（assist_satellite 实体）",
+          "proactive_mode": "主动模式：announce，或使用 start_conversation 同时打开麦克风"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "另一个 OpenClaw 条目已使用相同的智能体和会话连接此 Gateway",
+      "cannot_connect": "无法连接到 Gateway",
+      "invalid_auth": "身份验证失败：令牌无效",
+      "pairing_required": "需要批准设备。请在 OpenClaw 中批准此设备，然后重试。",
+      "timeout": "连接超时",
+      "invalid_mtls": "mTLS 需要启用 SSL，并同时提供客户端证书和私钥的路径",
+      "invalid_mtls_files": "无法加载客户端证书或私钥。请检查文件路径、权限以及证书与私钥是否匹配。",
+      "unknown": "发生意外错误"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Gateway 身份验证失败",
+      "description": "OpenClaw Gateway 令牌已失效。请在 设置 > 设备与服务 > OpenClaw > 配置 中更新令牌。"
+    },
+    "device_pairing_required": {
+      "title": "需要批准设备",
+      "description": "此 Home Assistant 设备需要先在 OpenClaw 中获得批准才能连接。请使用 OpenClaw 命令行或 Control UI 批准，然后重新加载集成。"
+    }
+  }
+}

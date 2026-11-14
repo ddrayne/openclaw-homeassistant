@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Translated settings screens** in German, French, Spanish, Italian, Dutch,
+  Polish, Brazilian Portuguese, Swedish, Japanese, Korean, and Simplified and
+  Traditional Chinese. The translations are machine-generated; tests keep
+  every language complete and stop names and identifiers being translated.
+- **Built-in spoken phrases follow the language of the request**, in the same
+  languages: the holding phrase and the messages for a timeout, a connection
+  or authentication problem, an agent error and an empty reply.
+
+### Changed (default behaviours)
+
+- **The default holding phrase is now spoken in the request's language.** A
+  holding phrase you have typed under Configure is still used exactly as
+  written; only the untouched English default is replaced.
+
+### Fixed
+
+- **Follow-up questions in Chinese, Japanese and Arabic keep the mic open.**
+  Only the Western `?` was recognised.
+- **The holding line works for Chinese and Japanese replies.** Their sentence
+  endings (`。！？`, with no following space) were not recognised, so the
+  agent's own words were never used.
+
 ## 1.10.0-beta.2 — 2026-11-14
 
 ### Added

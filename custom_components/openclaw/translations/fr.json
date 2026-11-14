@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Se connecter à OpenClaw Gateway",
+        "description": "Configurer la connexion à votre OpenClaw Gateway",
+        "data": {
+          "host": "Hôte",
+          "port": "Port",
+          "token": "Jeton du Gateway",
+          "use_ssl": "Utiliser SSL (wss://)",
+          "client_cert": "Chemin du certificat client (facultatif, mTLS)",
+          "client_key": "Chemin de la clé privée client (facultatif, mTLS)",
+          "timeout": "Délai d'attente de l'agent (secondes)"
+        }
+      },
+      "pairing": {
+        "title": "Approbation de l'appareil requise",
+        "description": "Un nouvel appareil a été enregistré auprès de votre OpenClaw Gateway et doit être approuvé avant de pouvoir se connecter.\n\nVeuillez l'approuver dans la CLI OpenClaw ou dans la Control UI, puis cliquez sur Valider pour continuer.\n\nSi votre instance OpenClaw se trouve sur la même machine (localhost), l'approbation devrait être automatique."
+      },
+      "session": {
+        "title": "Session et voix",
+        "description": "Choisissez une session et les options vocales",
+        "data": {
+          "session_key": "Clé de session (par défaut : main)",
+          "agent_id": "Agent (facultatif, laisser vide pour l'agent par défaut)",
+          "model": "Remplacement du modèle (facultatif)",
+          "thinking": "Remplacement du mode de réflexion (facultatif)",
+          "strip_emojis": "Retirer les émojis de la synthèse vocale",
+          "tts_max_chars": "Nombre maximal de caractères de la synthèse vocale (0 = sans limite)",
+          "proactive_enabled": "Voix proactive : laisser l'agent parler de lui-même (annonces, rappels, relances)",
+          "proactive_satellite": "Satellite sur lequel parler (entité assist_satellite)",
+          "proactive_mode": "Mode proactif : announce, ou start_conversation pour ouvrir aussi le micro"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Réauthentifier OpenClaw Gateway",
+        "description": "Le jeton du Gateway n'est plus valide. Veuillez mettre à jour vos paramètres de connexion.",
+        "data": {
+          "host": "Hôte",
+          "port": "Port",
+          "token": "Jeton du Gateway",
+          "use_ssl": "Utiliser SSL (wss://)",
+          "client_cert": "Chemin du certificat client (facultatif, mTLS)",
+          "client_key": "Chemin de la clé privée client (facultatif, mTLS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Échec de la connexion au Gateway",
+      "invalid_auth": "Échec de l'authentification : jeton invalide",
+      "pairing_not_approved": "L'appareil n'est pas encore approuvé dans OpenClaw. Approuvez-le, puis réessayez.",
+      "pairing_required": "Approbation de l'appareil requise. Approuvez cet appareil dans OpenClaw, puis réessayez.",
+      "timeout": "Délai de connexion dépassé",
+      "invalid_mtls": "mTLS nécessite SSL ainsi que les chemins du certificat client et de la clé privée",
+      "invalid_mtls_files": "Impossible de charger le certificat client ou la clé privée. Vérifiez les chemins, les permissions et la correspondance entre le certificat et la clé.",
+      "unknown": "Une erreur inattendue s'est produite"
+    },
+    "abort": {
+      "already_configured": "Ce Gateway est déjà configuré pour cet agent et cette session",
+      "reauth_successful": "Réauthentification réussie"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options d'OpenClaw Gateway",
+        "description": "Modifier les paramètres de connexion au Gateway",
+        "data": {
+          "host": "Hôte",
+          "port": "Port",
+          "token": "Jeton du Gateway",
+          "use_ssl": "Utiliser SSL (wss://)",
+          "client_cert": "Chemin du certificat client (facultatif, mTLS)",
+          "client_key": "Chemin de la clé privée client (facultatif, mTLS)",
+          "timeout": "Délai d'attente de l'agent (secondes)",
+          "session_key": "Clé de session (par défaut : main)",
+          "agent_id": "Agent (facultatif, laisser vide pour l'agent par défaut)",
+          "model": "Remplacement du modèle (facultatif)",
+          "thinking": "Remplacement du mode de réflexion (facultatif)",
+          "strip_emojis": "Retirer les émojis de la synthèse vocale",
+          "tts_max_chars": "Nombre maximal de caractères de la synthèse vocale (0 = sans limite)",
+          "streaming_enabled": "Diffuser les réponses en continu pour que la voix démarre plus tôt (expérimental ; nécessite un nombre maximal de caractères à 0)",
+          "background_enabled": "Travail en arrière-plan : répondre aux demandes lentes par une annonce ultérieure plutôt que d'expirer",
+          "background_grace": "Délai de grâce (secondes de silence avant le passage en arrière-plan)",
+          "holding_phrase": "Phrase d'attente, prononcée lorsqu'une demande est différée avant que l'agent ait dit une phrase complète",
+          "proactive_enabled": "Voix proactive : laisser l'agent parler de lui-même (annonces, rappels, relances)",
+          "proactive_satellite": "Satellite sur lequel parler (entité assist_satellite)",
+          "proactive_mode": "Mode proactif : announce, ou start_conversation pour ouvrir aussi le micro"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "Une autre entrée OpenClaw utilise déjà ce Gateway avec le même agent et la même session",
+      "cannot_connect": "Échec de la connexion au Gateway",
+      "invalid_auth": "Échec de l'authentification : jeton invalide",
+      "pairing_required": "Approbation de l'appareil requise. Approuvez cet appareil dans OpenClaw, puis réessayez.",
+      "timeout": "Délai de connexion dépassé",
+      "invalid_mtls": "mTLS nécessite SSL ainsi que les chemins du certificat client et de la clé privée",
+      "invalid_mtls_files": "Impossible de charger le certificat client ou la clé privée. Vérifiez les chemins, les permissions et la correspondance entre le certificat et la clé.",
+      "unknown": "Une erreur inattendue s'est produite"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Échec de l'authentification du Gateway",
+      "description": "Le jeton d'OpenClaw Gateway n'est plus valide. Mettez-le à jour dans Paramètres > Appareils et services > OpenClaw > Configurer."
+    },
+    "device_pairing_required": {
+      "title": "Approbation de l'appareil requise",
+      "description": "Cet appareil Home Assistant doit être approuvé dans OpenClaw avant de pouvoir se connecter. Approuvez-le avec la CLI OpenClaw ou la Control UI, puis rechargez l'intégration."
+    }
+  }
+}

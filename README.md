@@ -64,6 +64,7 @@ now reachable from any voice satellite, the mobile app or the Assist box.
 | 👥 **One assistant per agent** | Run [several agents from one gateway](#multiple-gateways-and-agents), each with its own wake word and voice. |
 | ⚡ **Faster speech** | Optional [streaming](#response-streaming) starts speaking while the agent is still writing. |
 | 🔁 **Stays connected** | Reconnects by itself through gateway and proxy restarts, and raises a Home Assistant repair when it needs you. |
+| 🌍 **Speaks your language** | Settings and built-in spoken phrases in [13 languages](#languages); your agent itself answers in any language it knows. |
 | 🔒 **Private by design** | A direct connection from Home Assistant to your own gateway, with token and device pairing. [Security ›](#security) |
 
 ## Quick start
@@ -111,6 +112,7 @@ Prefer to do it by hand? See [Installation](#installation) and the
   - [Response streaming](#response-streaming)
   - [Voice-optimized session](#voice-optimized-session)
   - [Multiple gateways and agents](#multiple-gateways-and-agents)
+  - [Languages](#languages)
 - [Remote gateway setup](#remote-gateway-setup)
 - [Troubleshooting](#troubleshooting)
 - [Limitations](#limitations)
@@ -537,6 +539,30 @@ conversation entity and device. That gives two common setups:
 
 Adding the same gateway, agent and session twice is still rejected as already
 configured.
+
+### Languages
+
+Your agent answers in whatever language you speak to it; that part is up to
+OpenClaw and your model. The integration's own text is translated too:
+
+- **Settings screens and error messages** are available in English, German,
+  French, Spanish, Italian, Dutch, Polish, Brazilian Portuguese, Swedish,
+  Japanese, Korean, and Simplified and Traditional Chinese. Home Assistant
+  picks the one matching your profile language.
+- **Spoken phrases** the integration says itself (the holding phrase, and the
+  short messages for a timeout, a connection problem or an empty reply) are
+  spoken in the language of the request, in the same languages. Other
+  languages hear English.
+- **Your own holding phrase always wins.** If you type one under **Configure**,
+  it is used exactly as written. Leave the default in place to get the built-in
+  phrase for each request's language.
+- Follow-up detection and the holding line understand Chinese, Japanese and
+  Arabic punctuation (`？`, `。`, `؟`) as well as Western.
+
+The translations were machine-generated and checked for completeness, not
+reviewed by native speakers. Corrections are very welcome: each language is one
+file in `custom_components/openclaw/translations/`, and the spoken phrases are
+in `custom_components/openclaw/phrases.py`.
 
 ## Remote gateway setup
 

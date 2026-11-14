@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "OpenClaw Gateway に接続",
+        "description": "OpenClaw Gateway への接続を設定します",
+        "data": {
+          "host": "ホスト",
+          "port": "ポート",
+          "token": "Gateway トークン",
+          "use_ssl": "SSL を使用 (wss://)",
+          "client_cert": "クライアント証明書のパス (任意、mTLS)",
+          "client_key": "クライアント秘密鍵のパス (任意、mTLS)",
+          "timeout": "エージェントのタイムアウト (秒)"
+        }
+      },
+      "pairing": {
+        "title": "デバイスの承認が必要です",
+        "description": "新しいデバイスが OpenClaw Gateway に登録されました。接続するには承認が必要です。\n\nOpenClaw の CLI または Control UI で承認してから、「送信」をクリックして続行してください。\n\nOpenClaw が同じマシン (localhost) で動作している場合は、自動的に承認されます。"
+      },
+      "session": {
+        "title": "セッションと音声",
+        "description": "セッションと音声のオプションを選択します",
+        "data": {
+          "session_key": "セッションキー (既定: main)",
+          "agent_id": "エージェント (任意、空欄で既定のエージェント)",
+          "model": "モデルの上書き (任意)",
+          "thinking": "思考モードの上書き (任意)",
+          "strip_emojis": "音声読み上げから絵文字を取り除く",
+          "tts_max_chars": "音声読み上げの最大文字数 (0 = 無制限)",
+          "proactive_enabled": "プロアクティブ音声: エージェントが自発的に話せるようにする (お知らせ、リマインダー、フォローアップ)",
+          "proactive_satellite": "話しかけるサテライト (assist_satellite エンティティ)",
+          "proactive_mode": "プロアクティブモード: announce、またはマイクも開く start_conversation"
+        }
+      },
+      "reauth_confirm": {
+        "title": "OpenClaw Gateway を再認証",
+        "description": "Gateway トークンが無効になりました。接続設定を更新してください。",
+        "data": {
+          "host": "ホスト",
+          "port": "ポート",
+          "token": "Gateway トークン",
+          "use_ssl": "SSL を使用 (wss://)",
+          "client_cert": "クライアント証明書のパス (任意、mTLS)",
+          "client_key": "クライアント秘密鍵のパス (任意、mTLS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Gateway に接続できませんでした",
+      "invalid_auth": "認証に失敗しました: トークンが無効です",
+      "pairing_not_approved": "デバイスがまだ OpenClaw で承認されていません。承認してから、もう一度お試しください。",
+      "pairing_required": "デバイスの承認が必要です。OpenClaw でこのデバイスを承認してから、再試行してください。",
+      "timeout": "接続がタイムアウトしました",
+      "invalid_mtls": "mTLS には SSL と、クライアント証明書および秘密鍵の両方のパスが必要です",
+      "invalid_mtls_files": "クライアント証明書または秘密鍵を読み込めません。ファイルのパス、権限、証明書と鍵の組み合わせを確認してください。",
+      "unknown": "予期しないエラーが発生しました"
+    },
+    "abort": {
+      "already_configured": "この Gateway は、このエージェントとセッションですでに設定されています",
+      "reauth_successful": "再認証に成功しました"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenClaw Gateway のオプション",
+        "description": "Gateway の接続設定を更新します",
+        "data": {
+          "host": "ホスト",
+          "port": "ポート",
+          "token": "Gateway トークン",
+          "use_ssl": "SSL を使用 (wss://)",
+          "client_cert": "クライアント証明書のパス (任意、mTLS)",
+          "client_key": "クライアント秘密鍵のパス (任意、mTLS)",
+          "timeout": "エージェントのタイムアウト (秒)",
+          "session_key": "セッションキー (既定: main)",
+          "agent_id": "エージェント (任意、空欄で既定のエージェント)",
+          "model": "モデルの上書き (任意)",
+          "thinking": "思考モードの上書き (任意)",
+          "strip_emojis": "音声読み上げから絵文字を取り除く",
+          "tts_max_chars": "音声読み上げの最大文字数 (0 = 無制限)",
+          "streaming_enabled": "応答をストリーミングして読み上げを早く始める (試験的。最大文字数を 0 にする必要があります)",
+          "background_enabled": "バックグラウンド処理: 時間のかかるリクエストはタイムアウトさせず、後からアナウンスで回答する",
+          "background_grace": "猶予時間 (バックグラウンドに回すまでの無音の秒数)",
+          "holding_phrase": "つなぎのフレーズ。エージェントが一文を言い終える前にリクエストが後回しになったときに話します",
+          "proactive_enabled": "プロアクティブ音声: エージェントが自発的に話せるようにする (お知らせ、リマインダー、フォローアップ)",
+          "proactive_satellite": "話しかけるサテライト (assist_satellite エンティティ)",
+          "proactive_mode": "プロアクティブモード: announce、またはマイクも開く start_conversation"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "別の OpenClaw エントリが、同じエージェントとセッションでこの Gateway をすでに使用しています",
+      "cannot_connect": "Gateway に接続できませんでした",
+      "invalid_auth": "認証に失敗しました: トークンが無効です",
+      "pairing_required": "デバイスの承認が必要です。OpenClaw でこのデバイスを承認してから、再試行してください。",
+      "timeout": "接続がタイムアウトしました",
+      "invalid_mtls": "mTLS には SSL と、クライアント証明書および秘密鍵の両方のパスが必要です",
+      "invalid_mtls_files": "クライアント証明書または秘密鍵を読み込めません。ファイルのパス、権限、証明書と鍵の組み合わせを確認してください。",
+      "unknown": "予期しないエラーが発生しました"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Gateway の認証に失敗しました",
+      "description": "OpenClaw Gateway のトークンが無効になりました。設定 > デバイスとサービス > OpenClaw > 設定 でトークンを更新してください。"
+    },
+    "device_pairing_required": {
+      "title": "デバイスの承認が必要です",
+      "description": "この Home Assistant デバイスは、接続する前に OpenClaw で承認する必要があります。OpenClaw の CLI または Control UI で承認してから、統合を再読み込みしてください。"
+    }
+  }
+}

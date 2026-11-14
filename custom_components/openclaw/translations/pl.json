@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Połącz z OpenClaw Gateway",
+        "description": "Skonfiguruj połączenie z OpenClaw Gateway",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token Gateway",
+          "use_ssl": "Użyj SSL (wss://)",
+          "client_cert": "Ścieżka do certyfikatu klienta (opcjonalnie, mTLS)",
+          "client_key": "Ścieżka do klucza prywatnego klienta (opcjonalnie, mTLS)",
+          "timeout": "Limit czasu agenta (sekundy)"
+        }
+      },
+      "pairing": {
+        "title": "Wymagane zatwierdzenie urządzenia",
+        "description": "W OpenClaw Gateway zarejestrowano nowe urządzenie. Musi ono zostać zatwierdzone, zanim będzie mogło się połączyć.\n\nZatwierdź je w CLI OpenClaw lub w Control UI, a następnie kliknij Zatwierdź, aby kontynuować.\n\nJeśli instancja OpenClaw działa na tym samym komputerze (localhost), zatwierdzenie powinno nastąpić automatycznie."
+      },
+      "session": {
+        "title": "Sesja i mowa",
+        "description": "Wybierz sesję i opcje mowy",
+        "data": {
+          "session_key": "Klucz sesji (domyślnie: main)",
+          "agent_id": "Agent (opcjonalnie, pozostaw puste dla domyślnego)",
+          "model": "Inny model (opcjonalnie)",
+          "thinking": "Inny tryb myślenia (opcjonalnie)",
+          "strip_emojis": "Usuwaj emoji z wypowiedzi",
+          "tts_max_chars": "Maksymalna liczba znaków wypowiedzi (0 = bez limitu)",
+          "proactive_enabled": "Głos proaktywny: pozwól agentowi odzywać się z własnej inicjatywy (komunikaty, przypomnienia, dopytania)",
+          "proactive_satellite": "Satelita, na którym agent ma mówić (encja assist_satellite)",
+          "proactive_mode": "Tryb proaktywny: announce albo start_conversation, aby dodatkowo włączyć mikrofon"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Uwierzytelnij ponownie OpenClaw Gateway",
+        "description": "Token Gateway jest już nieważny. Zaktualizuj ustawienia połączenia.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token Gateway",
+          "use_ssl": "Użyj SSL (wss://)",
+          "client_cert": "Ścieżka do certyfikatu klienta (opcjonalnie, mTLS)",
+          "client_key": "Ścieżka do klucza prywatnego klienta (opcjonalnie, mTLS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie udało się połączyć z Gateway",
+      "invalid_auth": "Uwierzytelnianie nie powiodło się: nieprawidłowy token",
+      "pairing_not_approved": "Urządzenie nie zostało jeszcze zatwierdzone w OpenClaw. Zatwierdź je i spróbuj ponownie.",
+      "pairing_required": "Wymagane zatwierdzenie urządzenia. Zatwierdź to urządzenie w OpenClaw i spróbuj ponownie.",
+      "timeout": "Przekroczono limit czasu połączenia",
+      "invalid_mtls": "mTLS wymaga SSL oraz ścieżek do certyfikatu klienta i klucza prywatnego",
+      "invalid_mtls_files": "Nie można wczytać certyfikatu klienta lub klucza prywatnego. Sprawdź ścieżki, uprawnienia oraz to, czy certyfikat i klucz do siebie pasują.",
+      "unknown": "Wystąpił nieoczekiwany błąd"
+    },
+    "abort": {
+      "already_configured": "Ten Gateway jest już skonfigurowany dla tego agenta i tej sesji",
+      "reauth_successful": "Ponowne uwierzytelnienie powiodło się"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opcje OpenClaw Gateway",
+        "description": "Zmień ustawienia połączenia z Gateway",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "Token Gateway",
+          "use_ssl": "Użyj SSL (wss://)",
+          "client_cert": "Ścieżka do certyfikatu klienta (opcjonalnie, mTLS)",
+          "client_key": "Ścieżka do klucza prywatnego klienta (opcjonalnie, mTLS)",
+          "timeout": "Limit czasu agenta (sekundy)",
+          "session_key": "Klucz sesji (domyślnie: main)",
+          "agent_id": "Agent (opcjonalnie, pozostaw puste dla domyślnego)",
+          "model": "Inny model (opcjonalnie)",
+          "thinking": "Inny tryb myślenia (opcjonalnie)",
+          "strip_emojis": "Usuwaj emoji z wypowiedzi",
+          "tts_max_chars": "Maksymalna liczba znaków wypowiedzi (0 = bez limitu)",
+          "streaming_enabled": "Przesyłaj odpowiedzi strumieniowo, aby mowa zaczynała się wcześniej (eksperymentalne; wymaga maksymalnej liczby znaków ustawionej na 0)",
+          "background_enabled": "Praca w tle: odpowiadaj na powolne polecenia późniejszym komunikatem zamiast przekraczać limit czasu",
+          "background_grace": "Czas oczekiwania (sekundy ciszy przed przeniesieniem do tła)",
+          "holding_phrase": "Zdanie na przeczekanie, wypowiadane, gdy polecenie zostaje odroczone, zanim agent wypowie pełne zdanie",
+          "proactive_enabled": "Głos proaktywny: pozwól agentowi odzywać się z własnej inicjatywy (komunikaty, przypomnienia, dopytania)",
+          "proactive_satellite": "Satelita, na którym agent ma mówić (encja assist_satellite)",
+          "proactive_mode": "Tryb proaktywny: announce albo start_conversation, aby dodatkowo włączyć mikrofon"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "Inny wpis OpenClaw używa już tego Gateway z tym samym agentem i tą samą sesją",
+      "cannot_connect": "Nie udało się połączyć z Gateway",
+      "invalid_auth": "Uwierzytelnianie nie powiodło się: nieprawidłowy token",
+      "pairing_required": "Wymagane zatwierdzenie urządzenia. Zatwierdź to urządzenie w OpenClaw i spróbuj ponownie.",
+      "timeout": "Przekroczono limit czasu połączenia",
+      "invalid_mtls": "mTLS wymaga SSL oraz ścieżek do certyfikatu klienta i klucza prywatnego",
+      "invalid_mtls_files": "Nie można wczytać certyfikatu klienta lub klucza prywatnego. Sprawdź ścieżki, uprawnienia oraz to, czy certyfikat i klucz do siebie pasują.",
+      "unknown": "Wystąpił nieoczekiwany błąd"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Uwierzytelnianie w Gateway nie powiodło się",
+      "description": "Token OpenClaw Gateway jest już nieważny. Zaktualizuj go w Ustawienia > Urządzenia oraz usługi > OpenClaw > Konfiguruj."
+    },
+    "device_pairing_required": {
+      "title": "Wymagane zatwierdzenie urządzenia",
+      "description": "To urządzenie Home Assistant musi zostać zatwierdzone w OpenClaw, zanim będzie mogło się połączyć. Zatwierdź je w CLI OpenClaw lub w Control UI, a następnie wczytaj integrację ponownie."
+    }
+  }
+}
