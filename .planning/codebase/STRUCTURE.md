@@ -17,7 +17,7 @@ clawd-homeassistant/
 │       ├── exceptions.py   # Custom exception hierarchy
 │       ├── manifest.json   # Integration metadata
 │       ├── strings.json    # User-facing strings for UI
-│       ├── brand/          # Integration icons, HA 2026.3+ (icon.png 256x256, icon@2x.png 512x512)
+│       ├── brand/          # Integration icons, HA 2026.3+ (icon + dark_icon, 256 and 512 px)
 │       └── translations/   # Internationalization files
 │           └── en.json     # English translations
 ├── .planning/              # GSD planning documents (auto-generated)

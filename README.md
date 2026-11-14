@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="custom_components/openclaw/brand/icon.png" alt="OpenClaw" width="120" height="120">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/openclaw/brand/dark_icon@2x.png">
+    <img src="custom_components/openclaw/brand/icon@2x.png" alt="OpenClaw for Home Assistant" width="128" height="128">
+  </picture>
 </p>
 
 <h1 align="center">OpenClaw Voice Assistant for Home Assistant</h1>
