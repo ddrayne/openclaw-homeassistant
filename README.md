@@ -1,22 +1,90 @@
-# OpenClaw Voice Assistant for Home Assistant
-
-[![Tests](https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml/badge.svg)](https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml)
-
 <p align="center">
-  <img src="custom_components/openclaw/brand/icon.png" alt="OpenClaw Icon" width="128" height="128">
+  <img src="custom_components/openclaw/brand/icon.png" alt="OpenClaw" width="120" height="120">
 </p>
 
-Talk to your [OpenClaw](https://openclaw.ai/) AI agent through Home Assistant's
-voice control and Assist — and let it talk back, unprompted, on your voice
-satellites.
+<h1 align="center">OpenClaw Voice Assistant for Home Assistant</h1>
 
-**OpenClaw** is an open-source AI agent that runs locally on your machine. It can
-browse the web, manage email and calendar, access files, run commands, and
-integrate with 50+ services (Gmail, GitHub, Spotify, Obsidian, …), using Claude,
-GPT, or local models. This integration exposes your **entire agent** — its skills,
-integrations, memory, and context — as a Home Assistant conversation agent.
-Whatever your OpenClaw does in WhatsApp, Telegram, or Discord, it can now do
-through your smart-home voice assistant.
+<p align="center">
+  <b>Your whole OpenClaw agent, in every room.</b><br>
+  Ask it anything by voice, let it get on with long jobs, and hear it speak up when it has something to tell you.
+</p>
+
+<p align="center">
+  <a href="https://github.com/ddrayne/openclaw-homeassistant/releases/latest"><img src="https://img.shields.io/github/v/release/ddrayne/openclaw-homeassistant?label=release" alt="Latest release"></a>
+  <a href="https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml"><img src="https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="https://hacs.xyz/"><img src="https://img.shields.io/badge/HACS-custom%20repository-41BDF5" alt="HACS custom repository"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/ddrayne/openclaw-homeassistant" alt="License"></a>
+</p>
+
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open this repository in HACS"></a>
+  &nbsp;
+  <a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=openclaw"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Add the OpenClaw integration to Home Assistant"></a>
+</p>
+
+---
+
+[OpenClaw](https://openclaw.ai/) is an open-source AI agent that runs on your own
+machine. It reads your email and calendar, browses the web, works with your files
+and notes, and connects to 50+ services, using Claude, GPT or a local model.
+
+This integration makes that agent a **Home Assistant conversation agent**. It is
+not a separate chatbot with its own setup: it is the same agent you already talk
+to in WhatsApp, Telegram or Discord, with the same skills, memory and context,
+now reachable from any voice satellite, the mobile app or the Assist box.
+
+## What it's like
+
+> **You:** "Hey Jarvis, what's on today, and did Sam reply about Friday?"
+>
+> **OpenClaw:** "You have the dentist at ten and a team review at two. Sam
+> replied an hour ago: Friday works, and she suggests the usual place at seven."
+
+> **You:** "Go through my unread email and tell me what actually needs me."
+>
+> **OpenClaw:** "On it — I'll let you know when it's done."
+>
+> *…two minutes later, on the same speaker…*
+>
+> **OpenClaw:** "Three things need you: the insurance renewal is due Thursday…"
+
+> *Unprompted, at 6 pm:*
+>
+> **OpenClaw:** "Your parcel was delivered to the side door. Want me to remind
+> you after dinner?" *(the mic opens so you can just answer)*
+
+## Why you'll like it
+
+| | |
+|---|---|
+| 🧠 **Your real agent** | Every skill, integration, memory and model you've set up in OpenClaw. Nothing to rebuild for Home Assistant. |
+| ⏳ **No more "that took too long"** | Slow requests are acknowledged straight away and the answer is [announced when it's ready](#background-work). |
+| 📣 **It can speak first** | Reminders, finished tasks and follow-ups are spoken on a satellite of your choice with [proactive voice](#proactive-voice) (opt-in). |
+| 🎙️ **Natural back-and-forth** | When the agent asks a question, the [mic stays open](#multi-turn-voice) so you can answer without the wake word. |
+| 👥 **One assistant per agent** | Run [several agents from one gateway](#multiple-gateways-and-agents), each with its own wake word and voice. |
+| ⚡ **Faster speech** | Optional [streaming](#response-streaming) starts speaking while the agent is still writing. |
+| 🔁 **Stays connected** | Reconnects by itself through gateway and proxy restarts, and raises a Home Assistant repair when it needs you. |
+| 🔒 **Private by design** | A direct connection from Home Assistant to your own gateway, with token and device pairing. [Security ›](#security) |
+
+## Quick start
+
+You need Home Assistant with [HACS](https://hacs.xyz/), and OpenClaw with its
+Gateway running. Full details are under [Requirements](#requirements).
+
+1. **Install.** Click the button, choose **Download**, then restart Home Assistant.
+
+   [![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration)
+
+2. **Connect.** Click the button and enter your gateway's host, port and
+   [token](#getting-a-gateway-token).
+
+   [![Add the OpenClaw integration to Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=openclaw)
+
+3. **Talk.** In **Settings → Voice assistants**, pick **OpenClaw** as the
+   conversation agent for your assistant. That's it.
+
+Prefer to do it by hand? See [Installation](#installation) and the
+[setup walkthrough](#setup-walkthrough).
 
 ## Contents
 
@@ -142,13 +210,19 @@ data:
 
 ### HACS (recommended)
 
+The quickest way is the button, which opens this repository in your HACS:
+
+[![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration)
+
+Or add it by hand:
+
 1. Open **HACS → Integrations → ⋮ → Custom repositories**.
 2. Add this repository URL with category **Integration**, then **Add**.
 3. Search for **OpenClaw Voice Assistant** and **Download**.
 4. **Restart Home Assistant.**
 
 > Pre-release builds: enable **Show beta versions** in the integration's HACS page
-> to install beta tags (e.g. `1.7.0-beta.1`).
+> to install beta tags (e.g. `1.10.0-beta.2`).
 
 For an existing installation, download the new version from the integration's
 HACS page, then restart Home Assistant to load the updated code. If an update is
@@ -607,8 +681,13 @@ match the version in `custom_components/openclaw/manifest.json`.
   · [docs](https://docs.openclaw.ai/)
 - **This integration** — community Home Assistant integration for the OpenClaw
   Gateway, maintained by [@ddrayne](https://github.com/ddrayne). Thanks to
-  contributors [@IsakCode222](https://github.com/IsakCode222) (multi-turn voice)
-  and [@thezapalsky](https://github.com/thezapalsky) (action-run responses).
+  contributors [@IsakCode222](https://github.com/IsakCode222) (multi-turn voice),
+  [@thezapalsky](https://github.com/thezapalsky) (action-run responses),
+  [@lanquarden](https://github.com/lanquarden) (connection recovery),
+  [@chotaling1](https://github.com/chotaling1) (replies on newer gateways),
+  [@biacz](https://github.com/biacz) (streaming),
+  [@albaintor](https://github.com/albaintor) (early-event fix, streaming design)
+  and [@NsCDE](https://github.com/NsCDE) (mTLS, options fixes).
 - **Support** — [GitHub Issues](https://github.com/ddrayne/openclaw-homeassistant/issues)
   · [Home Assistant Community](https://community.home-assistant.io/)
 
