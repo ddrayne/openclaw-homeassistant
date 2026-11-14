@@ -1,12 +1,25 @@
 {
   "domain": "openclaw",
   "name": "OpenClaw Voice Assistant",
-  "codeowners": ["@ddrayne"],
+  "after_dependencies": [
+    "assist_satellite"
+  ],
+  "categories": [
+    "ai_voice.voice_assistants"
+  ],
+  "codeowners": [
+    "@ddrayne"
+  ],
   "config_flow": true,
+  "dependencies": [
+    "conversation"
+  ],
   "documentation": "https://github.com/ddrayne/openclaw-homeassistant",
-  "issue_tracker": "https://github.com/ddrayne/openclaw-homeassistant/issues",
-  "requirements": ["websockets>=12.0"],
+  "integration_type": "service",
   "iot_class": "local_push",
-  "diagnostics": true,
+  "issue_tracker": "https://github.com/ddrayne/openclaw-homeassistant/issues",
+  "requirements": [
+    "websockets>=12.0"
+  ],
   "version": "1.10.0-beta.2"
 }
