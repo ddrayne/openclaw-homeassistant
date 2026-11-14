@@ -224,6 +224,7 @@ All of these are editable any time via **Settings → Devices & Services → Ope
 | **Port** | `18789` | Gateway port |
 | **Gateway Token** | — | Authentication token (required) |
 | **Use SSL** | Off | Use `wss://` (recommended for remote) |
+| **Client certificate / private key** | *(none)* | Paths to a certificate and key for mTLS, if your gateway or proxy requires a client certificate — see [Client certificates (mTLS)](#client-certificates-mtls) |
 | **Agent Timeout** | `300` s | Max wait for an inline reply (5–600); deferred runs get a 1-hour budget instead |
 | **Session Key** | `main` | OpenClaw session to route HA conversations to |
 | **Agent** | gateway default | Leave blank to resolve the gateway default, or select another agent; sessions are keyed as `agent:<id>:<session>` |
@@ -470,6 +471,20 @@ configured.
 - Host: `gateway.example.com` or IP · Port: `18789` · **Use SSL: ✓** · Token: required
 - Approve the device once in OpenClaw on first connect (see
   [Setup walkthrough](#setup-walkthrough)).
+
+### Client certificates (mTLS)
+
+If the gateway sits behind a proxy that requires a client certificate, set
+**Client certificate path** and **Client private key path** (during setup, or
+later under **Configure**). Both are needed, together with **Use SSL**.
+
+- The paths are read by Home Assistant, so the files must be somewhere it can
+  reach — for example `/config/ssl/openclaw-client.crt` and
+  `/config/ssl/openclaw-client.key`.
+- Both files are PEM. The private key must **not** be passphrase-protected.
+- The files are checked when you save: a missing file, or a certificate and key
+  that don't match, is reported in the form instead of failing later.
+- Clear both fields to go back to ordinary TLS.
 
 ### Option 2 — SSH tunnel
 

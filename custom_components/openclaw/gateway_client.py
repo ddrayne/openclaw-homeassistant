@@ -13,6 +13,7 @@ from .exceptions import (
     GatewayConnectionError,
     GatewayTimeoutError,
     GatewayUpgradeRejectedError,
+    GatewayTLSConfigurationError,
     ProtocolError,
 )
 from .gateway import GatewayProtocol
@@ -201,10 +202,18 @@ class OpenClawGatewayClient:
         model: str | None = None,
         thinking: str | None = None,
         hass: Any | None = None,
+        client_cert: str | None = None,
+        client_key: str | None = None,
     ) -> None:
         """Initialize the Gateway client."""
         self._gateway = GatewayProtocol(
-            host, port, token, use_ssl, hass=hass
+            host,
+            port,
+            token,
+            use_ssl,
+            hass=hass,
+            client_cert=client_cert,
+            client_key=client_key,
         )
         self._timeout = timeout
         self._session_key = session_key
@@ -254,6 +263,8 @@ class OpenClawGatewayClient:
         except asyncio.TimeoutError:
             fatal = self._gateway._fatal_error
             if isinstance(fatal, GatewayAuthenticationError):
+                raise fatal
+            if isinstance(fatal, GatewayTLSConfigurationError):
                 raise fatal
             if isinstance(fatal, ProtocolError):
                 raise GatewayConnectionError(str(fatal)) from fatal

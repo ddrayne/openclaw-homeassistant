@@ -34,11 +34,41 @@ from .exceptions import (
     DevicePairingRequiredError,
     GatewayAuthenticationError,
     GatewayConnectionError,
+    GatewayTLSConfigurationError,
     ProtocolError,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+def create_ssl_context(
+    client_cert: str | None = None,
+    client_key: str | None = None,
+) -> ssl.SSLContext:
+    """Build a TLS context with optional client authentication."""
+    try:
+        if bool(client_cert) != bool(client_key):
+            raise ValueError(
+                "Both client certificate and private key are required"
+            )
+
+        context = ssl.create_default_context()
+
+        if client_cert and client_key:
+            context.load_cert_chain(
+                certfile=client_cert,
+                keyfile=client_key,
+                # Without a password argument OpenSSL prompts on the
+                # terminal for an encrypted key, which can hang Home
+                # Assistant. An empty answer makes it fail cleanly instead.
+                password=lambda: "",
+            )
+
+        return context
+
+    except (OSError, ValueError, ssl.SSLError) as err:
+        raise GatewayTLSConfigurationError(
+            f"Invalid TLS configuration: {err}"
+        ) from err
 
 class GatewayProtocol:
     """Low-level OpenClaw Gateway WebSocket protocol implementation."""
@@ -50,6 +80,8 @@ class GatewayProtocol:
         token: str | None,
         use_ssl: bool = False,
         hass: Any | None = None,
+        client_cert: str | None = None,
+        client_key: str | None = None,
     ) -> None:
         """Initialize the Gateway protocol client."""
         self._hass = hass
@@ -57,6 +89,8 @@ class GatewayProtocol:
         self._port = port
         self._token = token
         self._use_ssl = use_ssl
+        self._client_cert = client_cert
+        self._client_key = client_key
 
         # Connection state
         self._websocket: Any | None = None
@@ -238,15 +272,22 @@ class GatewayProtocol:
         self._pending_requests.clear()
 
     async def _async_ssl_context(self) -> ssl.SSLContext:
-        """Return the TLS context for wss://, building it off the event loop.
+        """Return the cached TLS context for wss://, built off the event loop.
 
         Without an explicit context, websockets passes ``ssl=True`` and
         asyncio calls ``ssl.create_default_context()`` inside the event loop
         on every connect. That reads the system CA bundle from disk, which
         Home Assistant reports as a blocking call.
+
+        The shared SSL context helper also loads the optional mTLS client
+        certificate and private key. The context is reused across reconnects.
         """
         if self._ssl_context is None:
-            self._ssl_context = await asyncio.to_thread(ssl.create_default_context)
+            self._ssl_context = await asyncio.to_thread(
+                create_ssl_context,
+                self._client_cert,
+                self._client_key,
+            )
         return self._ssl_context
 
     async def _connection_loop(self) -> None:
@@ -357,6 +398,15 @@ class GatewayProtocol:
 
             except asyncio.CancelledError:
                 _LOGGER.debug("Connection loop cancelled")
+                break
+
+            except GatewayTLSConfigurationError as err:
+                self._fatal_error = err
+                _LOGGER.error(
+                    "Gateway TLS configuration error: %s", err
+                )
+                if self._on_fatal_error:
+                    self._on_fatal_error(err)
                 break
 
             except (GatewayAuthenticationError, ProtocolError) as err:

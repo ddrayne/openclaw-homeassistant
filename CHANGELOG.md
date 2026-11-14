@@ -1,9 +1,23 @@
 # Changelog
 
-## Unreleased
+## 1.10.0-beta.2 — 2026-11-14
+
+### Added
+
+- **Client certificates (mTLS)** (#27). Optional **Client certificate path**
+  and **Client private key path** for gateways behind a proxy that requires a
+  client certificate. Needs **Use SSL**. The files are validated when the form
+  is saved, a bad certificate or key stops with a clear error instead of being
+  retried forever, and a passphrase-protected key is rejected rather than
+  prompting on the terminal.
 
 ### Fixed
 
+- **The gateway token and model override can be cleared** in the options form
+  (#26). Once set, they could not be emptied again.
+- **Changing only the session no longer reloads the integration** (#28). The
+  new session is applied to the live connection; any other change still
+  reloads as before.
 - **Chinese, Japanese and Korean replies were never shown or spoken (#22).**
   With **Strip emojis** on (the default), the emoji pattern's `U+24C2–U+1F251`
   range also matched every CJK ideograph, kana and Hangul syllable, so the
@@ -11,6 +25,12 @@
   blocks only. It also removes newer emoji it used to miss (🦞), whole ZWJ
   sequences and flags, and a reply that is nothing but emoji is no longer
   turned into an empty response.
+
+### Thanks
+
+- @NsCDE — mTLS, clearable options and the session change without a reload
+  (#26, #27, #28), split out of #17 with tests
+- @Dandeguin — the debug log that pinned down #22
 
 ## 1.10.0-beta.1 — 2026-11-07
 
