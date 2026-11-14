@@ -4,6 +4,9 @@
   "after_dependencies": [
     "assist_satellite"
   ],
+  "categories": [
+    "ai_voice.voice_assistants"
+  ],
   "codeowners": [
     "@ddrayne"
   ],
