@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "OpenClaw Gateway에 연결",
+        "description": "OpenClaw Gateway 연결을 설정합니다",
+        "data": {
+          "host": "호스트",
+          "port": "포트",
+          "token": "Gateway 토큰",
+          "use_ssl": "SSL 사용 (wss://)",
+          "client_cert": "클라이언트 인증서 경로 (선택 사항, mTLS)",
+          "client_key": "클라이언트 개인 키 경로 (선택 사항, mTLS)",
+          "timeout": "에이전트 시간 제한 (초)"
+        }
+      },
+      "pairing": {
+        "title": "기기 승인 필요",
+        "description": "새 기기가 OpenClaw Gateway에 등록되었습니다. 연결하려면 먼저 승인해야 합니다.\n\nOpenClaw CLI 또는 Control UI에서 승인한 다음 제출을 눌러 계속하세요.\n\nOpenClaw가 같은 컴퓨터(localhost)에서 실행 중이면 자동으로 승인됩니다."
+      },
+      "session": {
+        "title": "세션 및 음성",
+        "description": "세션과 음성 옵션을 선택하세요",
+        "data": {
+          "session_key": "세션 키 (기본값: main)",
+          "agent_id": "에이전트 (선택 사항, 비워 두면 기본 에이전트)",
+          "model": "모델 재정의 (선택 사항)",
+          "thinking": "사고 모드 재정의 (선택 사항)",
+          "strip_emojis": "음성 출력에서 이모지 제거",
+          "tts_max_chars": "음성 출력 최대 글자 수 (0 = 제한 없음)",
+          "proactive_enabled": "선제적 음성: 에이전트가 먼저 말할 수 있도록 허용 (알림, 리마인더, 후속 안내)",
+          "proactive_satellite": "말할 위성 기기 (assist_satellite 엔티티)",
+          "proactive_mode": "선제적 모드: announce, 또는 마이크도 여는 start_conversation"
+        }
+      },
+      "reauth_confirm": {
+        "title": "OpenClaw Gateway 다시 인증",
+        "description": "Gateway 토큰이 더 이상 유효하지 않습니다. 연결 설정을 업데이트하세요.",
+        "data": {
+          "host": "호스트",
+          "port": "포트",
+          "token": "Gateway 토큰",
+          "use_ssl": "SSL 사용 (wss://)",
+          "client_cert": "클라이언트 인증서 경로 (선택 사항, mTLS)",
+          "client_key": "클라이언트 개인 키 경로 (선택 사항, mTLS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Gateway에 연결하지 못했습니다",
+      "invalid_auth": "인증 실패: 토큰이 유효하지 않습니다",
+      "pairing_not_approved": "기기가 아직 OpenClaw에서 승인되지 않았습니다. 승인한 후 다시 시도하세요.",
+      "pairing_required": "기기 승인이 필요합니다. OpenClaw에서 이 기기를 승인한 후 다시 시도하세요.",
+      "timeout": "연결 시간 초과",
+      "invalid_mtls": "mTLS를 사용하려면 SSL과 클라이언트 인증서 및 개인 키 경로가 모두 필요합니다",
+      "invalid_mtls_files": "클라이언트 인증서 또는 개인 키를 불러올 수 없습니다. 파일 경로, 권한, 인증서와 키가 서로 맞는지 확인하세요.",
+      "unknown": "예기치 않은 오류가 발생했습니다"
+    },
+    "abort": {
+      "already_configured": "이 Gateway는 이 에이전트와 세션으로 이미 설정되어 있습니다",
+      "reauth_successful": "다시 인증되었습니다"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenClaw Gateway 옵션",
+        "description": "Gateway 연결 설정을 업데이트합니다",
+        "data": {
+          "host": "호스트",
+          "port": "포트",
+          "token": "Gateway 토큰",
+          "use_ssl": "SSL 사용 (wss://)",
+          "client_cert": "클라이언트 인증서 경로 (선택 사항, mTLS)",
+          "client_key": "클라이언트 개인 키 경로 (선택 사항, mTLS)",
+          "timeout": "에이전트 시간 제한 (초)",
+          "session_key": "세션 키 (기본값: main)",
+          "agent_id": "에이전트 (선택 사항, 비워 두면 기본 에이전트)",
+          "model": "모델 재정의 (선택 사항)",
+          "thinking": "사고 모드 재정의 (선택 사항)",
+          "strip_emojis": "음성 출력에서 이모지 제거",
+          "tts_max_chars": "음성 출력 최대 글자 수 (0 = 제한 없음)",
+          "streaming_enabled": "응답을 스트리밍하여 음성이 더 빨리 시작되도록 함 (실험적 기능, 최대 글자 수를 0으로 설정해야 함)",
+          "background_enabled": "백그라운드 작업: 느린 요청은 시간 초과 대신 나중에 알림으로 답변",
+          "background_grace": "대기 시간 (백그라운드로 넘기기 전 침묵하는 초)",
+          "holding_phrase": "대기 문구. 에이전트가 한 문장을 다 말하기 전에 요청이 미뤄질 때 말합니다",
+          "proactive_enabled": "선제적 음성: 에이전트가 먼저 말할 수 있도록 허용 (알림, 리마인더, 후속 안내)",
+          "proactive_satellite": "말할 위성 기기 (assist_satellite 엔티티)",
+          "proactive_mode": "선제적 모드: announce, 또는 마이크도 여는 start_conversation"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "다른 OpenClaw 항목이 같은 에이전트와 세션으로 이 Gateway를 이미 사용하고 있습니다",
+      "cannot_connect": "Gateway에 연결하지 못했습니다",
+      "invalid_auth": "인증 실패: 토큰이 유효하지 않습니다",
+      "pairing_required": "기기 승인이 필요합니다. OpenClaw에서 이 기기를 승인한 후 다시 시도하세요.",
+      "timeout": "연결 시간 초과",
+      "invalid_mtls": "mTLS를 사용하려면 SSL과 클라이언트 인증서 및 개인 키 경로가 모두 필요합니다",
+      "invalid_mtls_files": "클라이언트 인증서 또는 개인 키를 불러올 수 없습니다. 파일 경로, 권한, 인증서와 키가 서로 맞는지 확인하세요.",
+      "unknown": "예기치 않은 오류가 발생했습니다"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Gateway 인증 실패",
+      "description": "OpenClaw Gateway 토큰이 더 이상 유효하지 않습니다. 설정 > 기기 및 서비스 > OpenClaw > 구성에서 토큰을 업데이트하세요."
+    },
+    "device_pairing_required": {
+      "title": "기기 승인 필요",
+      "description": "이 Home Assistant 기기는 연결하기 전에 OpenClaw에서 승인해야 합니다. OpenClaw CLI 또는 Control UI에서 승인한 다음 통합 구성요소를 다시 불러오세요."
+    }
+  }
+}

@@ -508,6 +508,25 @@ class TestQuietAfterReplying:
 
 class TestHoldingLineHelpers:
     @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("Want details?", True),
+            ("要我继续吗？", True),  # full-width question mark
+            ("続けますか？", True),
+            ("هل تريد المتابعة؟", True),  # Arabic question mark
+            ("好的。", False),
+            ("Fine.", False),
+            ("", False),
+        ],
+    )
+    def test_followup_question_marks(self, text: str, expected: bool) -> None:
+        assert _conv_plain.response_expects_followup(text) is expected
+
+    def test_chinese_sentence_counts_as_complete(self) -> None:
+        assert _conv_plain._ends_sentence("让我查一下。") is True
+        assert _conv_plain._ends_sentence("让我查一下") is False
+
+    @pytest.mark.parametrize(
         ("said", "expected"),
         [
             ("Let me check.", "Let me check."),
@@ -515,6 +534,11 @@ class TestHoldingLineHelpers:
             ("Done! Anything else?", "Done! Anything else?"),
             ('He said "on my way."', 'He said "on my way."'),
             ("Version 1.9 is", "FALLBACK"),  # a dot inside a number is no end
+            # Chinese and Japanese end sentences without a following space.
+            ("让我查一下你的收件箱。正在", "让我查一下你的收件箱。"),
+            ("メールを確認します。少々", "メールを確認します。"),
+            ("他说：“好的。”然后", "他说：“好的。”"),
+            ("正在查看", "FALLBACK"),
             ("Checking", "FALLBACK"),
             ("   ", "FALLBACK"),
         ],

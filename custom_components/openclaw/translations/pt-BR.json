@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Conectar ao OpenClaw Gateway",
+        "description": "Configure a conexão com o seu OpenClaw Gateway",
+        "data": {
+          "host": "Host",
+          "port": "Porta",
+          "token": "Token do Gateway",
+          "use_ssl": "Usar SSL (wss://)",
+          "client_cert": "Caminho do certificado de cliente (opcional, mTLS)",
+          "client_key": "Caminho da chave privada de cliente (opcional, mTLS)",
+          "timeout": "Tempo limite do agente (segundos)"
+        }
+      },
+      "pairing": {
+        "title": "Aprovação do dispositivo necessária",
+        "description": "Um novo dispositivo foi registrado no seu OpenClaw Gateway e precisa ser aprovado antes de poder se conectar.\n\nAprove-o na CLI do OpenClaw ou na Control UI e clique em Enviar para continuar.\n\nSe a sua instância do OpenClaw estiver na mesma máquina (localhost), a aprovação deve ser automática."
+      },
+      "session": {
+        "title": "Sessão e fala",
+        "description": "Escolha uma sessão e as opções de fala",
+        "data": {
+          "session_key": "Chave da sessão (padrão: main)",
+          "agent_id": "Agente (opcional, deixe em branco para o padrão)",
+          "model": "Modelo alternativo (opcional)",
+          "thinking": "Modo de raciocínio alternativo (opcional)",
+          "strip_emojis": "Remover emojis da fala",
+          "tts_max_chars": "Máximo de caracteres da fala (0 = sem limite)",
+          "proactive_enabled": "Voz proativa: permita que o agente fale por iniciativa própria (avisos, lembretes, acompanhamentos)",
+          "proactive_satellite": "Satélite em que o agente vai falar (entidade assist_satellite)",
+          "proactive_mode": "Modo proativo: announce, ou start_conversation para também abrir o microfone"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Autenticar novamente o OpenClaw Gateway",
+        "description": "O token do Gateway não é mais válido. Atualize as configurações de conexão.",
+        "data": {
+          "host": "Host",
+          "port": "Porta",
+          "token": "Token do Gateway",
+          "use_ssl": "Usar SSL (wss://)",
+          "client_cert": "Caminho do certificado de cliente (opcional, mTLS)",
+          "client_key": "Caminho da chave privada de cliente (opcional, mTLS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Falha ao conectar ao Gateway",
+      "invalid_auth": "Falha na autenticação: token inválido",
+      "pairing_not_approved": "O dispositivo ainda não foi aprovado no OpenClaw. Aprove-o e tente novamente.",
+      "pairing_required": "Aprovação do dispositivo necessária. Aprove este dispositivo no OpenClaw e tente novamente.",
+      "timeout": "Tempo de conexão esgotado",
+      "invalid_mtls": "O mTLS exige SSL e os caminhos do certificado de cliente e da chave privada",
+      "invalid_mtls_files": "Não foi possível carregar o certificado de cliente ou a chave privada. Verifique os caminhos, as permissões e se o certificado e a chave correspondem.",
+      "unknown": "Ocorreu um erro inesperado"
+    },
+    "abort": {
+      "already_configured": "Este Gateway já está configurado para este agente e esta sessão",
+      "reauth_successful": "Nova autenticação concluída"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opções do OpenClaw Gateway",
+        "description": "Atualizar as configurações de conexão do Gateway",
+        "data": {
+          "host": "Host",
+          "port": "Porta",
+          "token": "Token do Gateway",
+          "use_ssl": "Usar SSL (wss://)",
+          "client_cert": "Caminho do certificado de cliente (opcional, mTLS)",
+          "client_key": "Caminho da chave privada de cliente (opcional, mTLS)",
+          "timeout": "Tempo limite do agente (segundos)",
+          "session_key": "Chave da sessão (padrão: main)",
+          "agent_id": "Agente (opcional, deixe em branco para o padrão)",
+          "model": "Modelo alternativo (opcional)",
+          "thinking": "Modo de raciocínio alternativo (opcional)",
+          "strip_emojis": "Remover emojis da fala",
+          "tts_max_chars": "Máximo de caracteres da fala (0 = sem limite)",
+          "streaming_enabled": "Transmitir as respostas para que a fala comece antes (experimental; exige o máximo de caracteres em 0)",
+          "background_enabled": "Trabalho em segundo plano: responder a pedidos lentos com um aviso posterior em vez de esgotar o tempo",
+          "background_grace": "Período de espera (segundos de silêncio antes de passar para segundo plano)",
+          "holding_phrase": "Frase de espera, falada quando um pedido é adiado antes de o agente dizer uma frase completa",
+          "proactive_enabled": "Voz proativa: permita que o agente fale por iniciativa própria (avisos, lembretes, acompanhamentos)",
+          "proactive_satellite": "Satélite em que o agente vai falar (entidade assist_satellite)",
+          "proactive_mode": "Modo proativo: announce, ou start_conversation para também abrir o microfone"
+        }
+      }
+    },
+    "error": {
+      "already_configured": "Outra entrada do OpenClaw já usa este Gateway com o mesmo agente e a mesma sessão",
+      "cannot_connect": "Falha ao conectar ao Gateway",
+      "invalid_auth": "Falha na autenticação: token inválido",
+      "pairing_required": "Aprovação do dispositivo necessária. Aprove este dispositivo no OpenClaw e tente novamente.",
+      "timeout": "Tempo de conexão esgotado",
+      "invalid_mtls": "O mTLS exige SSL e os caminhos do certificado de cliente e da chave privada",
+      "invalid_mtls_files": "Não foi possível carregar o certificado de cliente ou a chave privada. Verifique os caminhos, as permissões e se o certificado e a chave correspondem.",
+      "unknown": "Ocorreu um erro inesperado"
+    }
+  },
+  "issues": {
+    "gateway_auth_failed": {
+      "title": "Falha na autenticação do Gateway",
+      "description": "O token do OpenClaw Gateway não é mais válido. Atualize-o em Configurações > Dispositivos e serviços > OpenClaw > Configurar."
+    },
+    "device_pairing_required": {
+      "title": "Aprovação do dispositivo necessária",
+      "description": "Este dispositivo do Home Assistant precisa ser aprovado no OpenClaw antes de poder se conectar. Aprove-o pela CLI do OpenClaw ou pela Control UI e depois recarregue a integração."
+    }
+  }
+}

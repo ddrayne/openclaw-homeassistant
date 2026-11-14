@@ -46,6 +46,7 @@ from .exceptions import (
     GatewayTimeoutError,
 )
 from .gateway_client import AgentRun, AgentRunQuiet, OpenClawGatewayClient
+from .phrases import holding_phrase as _holding_phrase, phrase
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,18 +86,30 @@ def trim_tts_text(text: str, max_chars: int) -> str:
     return text[: max_chars - 3].rstrip() + "..."
 
 
+# "?" as written in Latin scripts, Chinese/Japanese (full-width) and Arabic.
+_QUESTION_MARKS = ("?", "\uFF1F", "\u061F")
+
+
 def response_expects_followup(text: str) -> bool:
     """Return True if the response looks like it asks a follow-up question.
 
     Keeps the satellite mic open so the user can reply without re-triggering
-    the wake word. We treat any "?" in the reply as a follow-up cue.
+    the wake word. We treat any question mark in the reply as a follow-up cue,
+    including the full-width one used in Chinese and Japanese and the Arabic
+    one.
     """
-    return "?" in (text or "")
+    return any(mark in (text or "") for mark in _QUESTION_MARKS)
 
 
-# A sentence end: terminal punctuation, optionally followed by closing quotes
-# or brackets, then whitespace or the end of the text.
-_SENTENCE_END = re.compile(r"[.!?\u2026][\"'\u201d\u2019)\]]*(?=\s|$)")
+# A sentence end. Western punctuation counts only when followed by whitespace
+# or the end of the text, so the dot in "1.9" is not an end. Chinese and
+# Japanese punctuation (\u3002 \uFF01 \uFF1F), the Devanagari danda and the
+# Arabic question mark are not followed by a space, so they count wherever
+# they appear. Closing quotes or brackets may follow either kind.
+_CLOSERS = "[\"'\u201d\u2019)\\]\u300d\u300f\uff09]*"
+_SENTENCE_END = re.compile(
+    rf"[.!?\u2026]{_CLOSERS}(?=\s|$)|[\u3002\uFF01\uFF1F\u0964\u061F]{_CLOSERS}"
+)
 
 
 def _holding_line(said: str, fallback: str) -> str:
@@ -136,7 +149,7 @@ class _Deferral:
     said: str = ""
 
 
-def _reply_or_fallback(text: str | None) -> str:
+def _reply_or_fallback(text: str | None, language: object = None) -> str:
     """Return the agent's reply, or a spoken fallback if it is empty.
 
     A run that completes without any text would otherwise leave Assist with an
@@ -148,7 +161,7 @@ def _reply_or_fallback(text: str | None) -> str:
         "OpenClaw finished without any reply text. Enable debug logging for "
         "custom_components.openclaw to see the agent events it sent"
     )
-    return EMPTY_REPLY_PHRASE
+    return phrase("empty_reply", language)
 
 
 def _set_continue_conversation(
@@ -375,15 +388,14 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
                 user_message
             )
             return self._build_plain_result(
-                user_input, chat_log, _reply_or_fallback(response_text)
+                user_input, chat_log, _reply_or_fallback(response_text, user_input.language)
             )
 
         except GatewayAuthenticationError as err:
             _LOGGER.error("Gateway authentication error: %s", err)
             return self._create_error_result(
                 user_input,
-                "The gateway token is no longer valid. Please update it in "
-                "Settings, Devices and Services, OpenClaw, Configure.",
+                phrase("auth", user_input.language),
                 chat_log,
             )
 
@@ -391,7 +403,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             _LOGGER.error("Gateway connection error: %s", err)
             return self._create_error_result(
                 user_input,
-                "I'm having trouble connecting to the Gateway. Please check your configuration.",
+                phrase("connection", user_input.language),
                 chat_log,
             )
 
@@ -399,7 +411,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             _LOGGER.warning("Gateway timeout: %s", err)
             return self._create_error_result(
                 user_input,
-                "The response took too long. Please try again.",
+                phrase("timeout", user_input.language),
                 chat_log,
             )
 
@@ -407,7 +419,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             _LOGGER.error("Agent execution error: %s", err)
             return self._create_error_result(
                 user_input,
-                "I encountered an error while processing your request. Please try again.",
+                phrase("agent_error", user_input.language),
                 chat_log,
             )
 
@@ -415,7 +427,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             _LOGGER.exception("Unexpected error in message handling")
             return self._create_error_result(
                 user_input,
-                "An unexpected error occurred. Please try again.",
+                phrase("unexpected", user_input.language),
                 chat_log,
             )
 
@@ -462,7 +474,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         the holding line, and the rest is announced when it finishes.
         """
         grace = config.get(CONF_BACKGROUND_GRACE, DEFAULT_BACKGROUND_GRACE)
-        holding_phrase = config.get(CONF_HOLDING_PHRASE, DEFAULT_HOLDING_PHRASE)
+        holding_phrase = _holding_phrase(config, user_input.language)
         agent_run = await self._gateway_client.begin_agent_run(user_message)
 
         try:
@@ -509,7 +521,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             )
         response_text = agent_run.get_response() or "".join(chunks)
         return self._build_plain_result(
-            user_input, chat_log, _reply_or_fallback(response_text)
+            user_input, chat_log, _reply_or_fallback(response_text, user_input.language)
         )
 
     async def _resume_until_quiet(
@@ -554,7 +566,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             agent_run.run_id,
         )
         self._detach_run(agent_run, user_input)
-        holding_phrase = config.get(CONF_HOLDING_PHRASE, DEFAULT_HOLDING_PHRASE)
+        holding_phrase = _holding_phrase(config, user_input.language)
         return self._build_plain_result(
             user_input, chat_log, holding_phrase, expects_followup=False
         )
@@ -567,7 +579,10 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
     ) -> None:
         """Finish the run in the background and announce its result."""
         report = self._background_report(
-            agent_run, getattr(user_input, "device_id", None), already_said
+            agent_run,
+            getattr(user_input, "device_id", None),
+            already_said,
+            getattr(user_input, "language", None),
         )
         create_background_task = getattr(
             self.hass, "async_create_background_task", None
@@ -584,7 +599,11 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         task.add_done_callback(self._background_tasks.discard)
 
     async def _background_report(
-        self, agent_run: AgentRun, device_id: str | None, already_said: str = ""
+        self,
+        agent_run: AgentRun,
+        device_id: str | None,
+        already_said: str = "",
+        language: object = None,
     ) -> None:
         """Await a detached run and announce its result on a satellite.
 
@@ -606,15 +625,15 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
                 agent_run.run_id,
                 BACKGROUND_MAX_SECONDS,
             )
-            text = BACKGROUND_TIMEOUT_PHRASE
+            text = phrase("background_timeout", language)
         except asyncio.CancelledError:
             raise
         except AgentExecutionError as err:
             _LOGGER.error("Background run %s failed: %s", agent_run.run_id, err)
-            text = BACKGROUND_ERROR_PHRASE
+            text = phrase("background_error", language)
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected error in background run %s", agent_run.run_id)
-            text = BACKGROUND_ERROR_PHRASE
+            text = phrase("background_error", language)
 
         if not text:
             _LOGGER.debug(
@@ -678,6 +697,7 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
             self._stream_deltas(
                 chunk_source,
                 config.get(CONF_STRIP_EMOJIS, DEFAULT_STRIP_EMOJIS),
+                user_input.language,
             ),
         ):
             if isinstance(content, conversation.AssistantContent):
@@ -691,7 +711,10 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         return result
 
     async def _stream_deltas(
-        self, chunk_source: AsyncIterator[str], should_strip: bool
+        self,
+        chunk_source: AsyncIterator[str],
+        should_strip: bool,
+        language: object = None,
     ) -> AsyncIterator[dict[str, str]]:
         """Translate Gateway chunks into ChatLog assistant deltas."""
         yield {"role": "assistant"}
@@ -710,41 +733,26 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         except GatewayAuthenticationError as err:
             _LOGGER.error("Gateway authentication error: %s", err)
             if not had_content:
-                yield {
-                    "content": (
-                        "The gateway token is no longer valid. Please update it in "
-                        "Settings, Devices and Services, OpenClaw, Configure."
-                    )
-                }
+                yield {"content": phrase("auth", language)}
         except GatewayConnectionError as err:
             _LOGGER.error("Gateway connection error: %s", err)
             if not had_content:
-                yield {
-                    "content": (
-                        "I'm having trouble connecting to the Gateway. "
-                        "Please check your configuration."
-                    )
-                }
+                yield {"content": phrase("connection", language)}
         except GatewayTimeoutError as err:
             _LOGGER.warning("Gateway timeout: %s", err)
             if not had_content:
-                yield {"content": "The response took too long. Please try again."}
+                yield {"content": phrase("timeout", language)}
         except AgentExecutionError as err:
             _LOGGER.error("Agent execution error: %s", err)
             if not had_content:
-                yield {
-                    "content": (
-                        "I encountered an error while processing your request. "
-                        "Please try again."
-                    )
-                }
+                yield {"content": phrase("agent_error", language)}
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected error in streaming response")
             if not had_content:
-                yield {"content": "An unexpected error occurred. Please try again."}
+                yield {"content": phrase("unexpected", language)}
         else:
             if not had_raw_content:
-                yield {"content": _reply_or_fallback("")}
+                yield {"content": _reply_or_fallback("", language)}
 
     def _finalize_response(
         self,

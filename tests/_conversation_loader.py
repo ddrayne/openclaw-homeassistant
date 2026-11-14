@@ -171,6 +171,7 @@ def load_conversation_module(*, streaming: str = "none") -> ModuleType:
     _load_module(
         "custom_components.openclaw.gateway_client", base / "gateway_client.py"
     )
+    _load_module("custom_components.openclaw.phrases", base / "phrases.py")
     return _load_module(
         "custom_components.openclaw.conversation", base / "conversation.py"
     )
