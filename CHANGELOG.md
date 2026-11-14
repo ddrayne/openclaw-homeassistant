@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Chinese, Japanese and Korean replies were never shown or spoken (#22).**
+  With **Strip emojis** on (the default), the emoji pattern's `U+24C2–U+1F251`
+  range also matched every CJK ideograph, kana and Hangul syllable, so the
+  whole reply was stripped and Assist showed "...". The pattern now lists emoji
+  blocks only. It also removes newer emoji it used to miss (🦞), whole ZWJ
+  sequences and flags, and a reply that is nothing but emoji is no longer
+  turned into an empty response.
+
 ## 1.10.0-beta.1 — 2026-11-07
 
 ### Changed (default behaviours)

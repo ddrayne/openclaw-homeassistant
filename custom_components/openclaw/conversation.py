@@ -49,16 +49,24 @@ from .gateway_client import AgentRun, AgentRunQuiet, OpenClawGatewayClient
 
 _LOGGER = logging.getLogger(__name__)
 
-# Emoji pattern for removal from TTS
+# Emoji pattern for removal from TTS.
+#
+# Only emoji blocks are listed. An earlier pattern used the range
+# U+24C2-U+1F251, which also covers every CJK ideograph, kana and Hangul
+# syllable, so Chinese, Japanese and Korean replies were stripped to nothing
+# and Assist showed an empty response.
+_EMOJI_CHARS = (
+    "\U0001F000-\U0001FAFF"  # pictographs, emoticons, transport, flags, ...
+    "\u2600-\u27BF"  # miscellaneous symbols and dingbats
+    "\u231A\u231B\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA"  # watch, hourglass, media
+    "\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55"  # arrows, squares, star, circle
+    "\uFE0F\u20E3"  # emoji variation selector, keycap
+    "\U000E0020-\U000E007F"  # tag characters (regional flags)
+)
+# A zero-width joiner is only removed between emoji: on its own it shapes
+# text in scripts such as Persian and Sinhala.
 EMOJI_PATTERN = re.compile(
-    "["
-    "\U0001F600-\U0001F64F"  # emoticons
-    "\U0001F300-\U0001F5FF"  # symbols & pictographs
-    "\U0001F680-\U0001F6FF"  # transport & map symbols
-    "\U0001F1E0-\U0001F1FF"  # flags (iOS)
-    "\U00002702-\U000027B0"  # dingbats
-    "\U000024C2-\U0001F251"
-    "]+",
+    f"[{_EMOJI_CHARS}]+(?:\u200D[{_EMOJI_CHARS}]+)*",
     flags=re.UNICODE,
 )
 
@@ -758,6 +766,9 @@ class OpenClawConversationEntity(conversation.ConversationEntity):
         speech_text = (
             strip_emojis(response_text) if should_strip else response_text
         )
+        # Never hand Home Assistant an empty spoken response for a reply that
+        # had content (an emoji-only reply): Assist shows that as "...".
+        speech_text = speech_text or response_text
         max_chars = config.get(CONF_TTS_MAX_CHARS, DEFAULT_TTS_MAX_CHARS)
         speech_text = trim_tts_text(speech_text, max_chars)
         intent_response.async_set_speech(speech_text)
