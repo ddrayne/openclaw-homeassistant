@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10.0 — 2026-11-14
+
+Stable release of everything in the three betas below. There are no code
+changes since 1.10.0-beta.3. Compared with 1.9.0, in short:
+
+- Chinese, Japanese and Korean replies are no longer erased by emoji stripping
+  (#22).
+- The holding line can be the agent's own words, and a reply that goes quiet
+  hands off to the background.
+- Settings screens and built-in spoken phrases in 13 languages.
+- Optional mTLS client certificates (#27), clearable token and model override
+  (#26), and session changes without a reload (#28).
+
 ## 1.10.0-beta.3 — 2026-11-14
 
 ### Added

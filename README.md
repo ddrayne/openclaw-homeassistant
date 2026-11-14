@@ -224,7 +224,7 @@ Or add it by hand:
 4. **Restart Home Assistant.**
 
 > Pre-release builds: enable **Show beta versions** in the integration's HACS page
-> to install beta tags (e.g. `1.10.0-beta.2`).
+> to install beta tags (e.g. `1.11.0-beta.1`).
 
 For an existing installation, download the new version from the integration's
 HACS page, then restart Home Assistant to load the updated code. If an update is
