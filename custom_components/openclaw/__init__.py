@@ -8,7 +8,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, ConfigEntryError
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue, async_delete_issue
 from homeassistant.helpers.service import async_register_admin_service
 
@@ -31,6 +31,8 @@ from .const import (
     DEFAULT_USE_SSL,
     DOMAIN,
     UPGRADE_AUTH_RETRY_ATTEMPTS,
+    CONF_CLIENT_CERT,
+    CONF_CLIENT_KEY,
     entry_unique_id,
 )
 from .exceptions import (
@@ -39,6 +41,7 @@ from .exceptions import (
     GatewayConnectionError,
     GatewayTimeoutError,
     GatewayUpgradeRejectedError,
+    GatewayTLSConfigurationError,
 )
 from .gateway_client import OpenClawGatewayClient
 
@@ -63,6 +66,8 @@ _SESSION_SCHEMA = vol.Schema(
 _OPTION_KEYS = {
     CONF_TOKEN,
     CONF_USE_SSL,
+    CONF_CLIENT_CERT,
+    CONF_CLIENT_KEY,
     CONF_TIMEOUT,
     CONF_SESSION_KEY,
     CONF_AGENT_ID,
@@ -142,6 +147,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         use_ssl=options.get(
             CONF_USE_SSL, entry.data.get(CONF_USE_SSL, DEFAULT_USE_SSL)
         ),
+        client_cert=options.get(
+            CONF_CLIENT_CERT, entry.data.get(CONF_CLIENT_CERT)
+        ),
+        client_key=options.get(
+            CONF_CLIENT_KEY, entry.data.get(CONF_CLIENT_KEY)
+        ),
         timeout=options.get(
             CONF_TIMEOUT, entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
         ),
@@ -173,6 +184,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # ``hass.data`` would otherwise keep reconnecting untracked while the
         # next setup attempt creates another one.
         await _async_disconnect_quietly(gateway_client, entry)
+        if isinstance(err, GatewayTLSConfigurationError):
+            raise ConfigEntryError(
+                f"Invalid Gateway TLS configuration: {err}"
+            ) from err
         if isinstance(err, GatewayAuthenticationError):
             raise ConfigEntryAuthFailed(err) from err
         if isinstance(err, GatewayUpgradeRejectedError):

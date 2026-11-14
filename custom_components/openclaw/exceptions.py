@@ -8,6 +8,8 @@ class OpenClawError(Exception):
 class GatewayConnectionError(OpenClawError):
     """Cannot connect to Gateway."""
 
+class GatewayTLSConfigurationError(GatewayConnectionError):
+    """Invalid local TLS certificate or private key configuration."""
 
 class GatewayUpgradeRejectedError(GatewayConnectionError):
     """The WebSocket upgrade was rejected with HTTP 401/403.
