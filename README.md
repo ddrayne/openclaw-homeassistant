@@ -15,12 +15,12 @@
 <p align="center">
   <a href="https://github.com/ddrayne/openclaw-homeassistant/releases/latest"><img src="https://img.shields.io/github/v/release/ddrayne/openclaw-homeassistant?label=release" alt="Latest release"></a>
   <a href="https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml"><img src="https://github.com/ddrayne/openclaw-homeassistant/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://hacs.xyz/"><img src="https://img.shields.io/badge/HACS-custom%20repository-41BDF5" alt="HACS custom repository"></a>
+  <a href="https://hacs.xyz/"><img src="https://img.shields.io/badge/HACS-default-41BDF5" alt="Listed in HACS"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/ddrayne/openclaw-homeassistant" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open this repository in HACS"></a>
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in the Marketplace or HACS"></a>
   &nbsp;
   <a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=openclaw"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Add the OpenClaw integration to Home Assistant"></a>
 </p>
@@ -72,12 +72,15 @@ now reachable from any voice satellite, the mobile app or the Assist box.
 
 ## Quick start
 
-You need Home Assistant with [HACS](https://hacs.xyz/), and OpenClaw with its
-Gateway running. Full details are under [Requirements](#requirements).
+You need Home Assistant and OpenClaw with its Gateway running. Full details are
+under [Requirements](#requirements).
 
-1. **Install.** Click the button, choose **Download**, then restart Home Assistant.
+1. **Install.** Search for **OpenClaw** in the Marketplace (**Settings →
+   Marketplace**, built into Home Assistant 2026.11 and later) or in
+   [HACS](https://hacs.xyz/) on older versions, install it, then restart Home
+   Assistant. The button opens it directly:
 
-   [![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration)
+   [![Open in the Marketplace or HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration)
 
 2. **Connect.** Click the button and enter your gateway's host, port and
    [token](#getting-a-gateway-token).
@@ -213,26 +216,32 @@ data:
 
 ## Installation
 
-### HACS (recommended)
+### Marketplace or HACS (recommended)
 
-The quickest way is the button, which opens this repository in your HACS:
+OpenClaw Voice Assistant is in the default catalog, so there is no repository to
+add first:
 
-[![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration)
+- **Home Assistant 2026.11 and later:** go to **Settings → Marketplace**, search
+  for **OpenClaw Voice Assistant**, and install it.
+- **Earlier versions:** open [HACS](https://hacs.xyz/), search for **OpenClaw
+  Voice Assistant**, and select **Download**.
 
-Or add it by hand:
+Then **restart Home Assistant**. The button opens the listing directly in
+whichever one you have:
 
-1. Open **HACS → Integrations → ⋮ → Custom repositories**.
-2. Add this repository URL with category **Integration**, then **Add**.
-3. Search for **OpenClaw Voice Assistant** and **Download**.
-4. **Restart Home Assistant.**
+[![Open in the Marketplace or HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ddrayne&repository=openclaw-homeassistant&category=integration)
 
-> Pre-release builds: enable **Show beta versions** in the integration's HACS page
-> to install beta tags (e.g. `1.11.0-beta.1`).
+**Updates** show up like any other Home Assistant update. Install it, then
+restart Home Assistant to load the new code. If an update is slow to appear,
+refresh the repository information from its page.
 
-For an existing installation, download the new version from the integration's
-HACS page, then restart Home Assistant to load the updated code. If an update is
-missing, refresh the repository information in HACS. Versions come from published
-GitHub Releases, not tags alone; see [Releasing for HACS](RELEASING.md).
+**Betas:** to try pre-release builds (e.g. `1.11.0-beta.1`), turn on
+pre-releases for this repository: the **Pre-release** switch on its page in the
+Marketplace, or **Show beta versions** in HACS.
+
+> **Already added it as a custom repository?** Nothing to do: your install
+> keeps working and updating. You can remove the custom repository entry if you
+> like; the catalog listing is the same repository.
 
 ### Manual
 
@@ -646,7 +655,7 @@ connection looks local to OpenClaw, so device pairing is typically auto-approved
 
 **Protocol mismatch**
 - Means the integration and gateway speak different protocol versions. Update both
-  the integration (HACS) and OpenClaw to current releases.
+  the integration (through the Marketplace or HACS) and OpenClaw to current releases.
 
 **Diagnostics & logs**
 - Download diagnostics: **Settings → Devices & Services → OpenClaw → ⋮ →
